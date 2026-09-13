@@ -57,8 +57,11 @@ public sealed class RenderToolTests
             RenderTools.RenderFrames(harness.Cut, "hero.cut.json"));
 
         Assert.Equal(10, json.GetProperty("fps").GetDouble());
-        Assert.Equal(0.5, json.GetProperty("to").GetDouble());
-        Assert.Equal(6, json.GetProperty("files").GetArrayLength());   // 0 to 0.5 inclusive at 10 fps
+        // A project's duration is a LENGTH, so 0.5s at 10 fps is 5 files covering [0, 0.5) - the
+        // last at 0.4s. An inclusive reading would give 6 files and half a second plus one frame.
+        Assert.Equal(5, json.GetProperty("files").GetArrayLength());
+        Assert.Equal(0.4, json.GetProperty("to").GetDouble(), 6);
+        Assert.Equal(0.5, json.GetProperty("seconds").GetDouble(), 6);
     }
 
     [Fact]
@@ -92,6 +95,69 @@ public sealed class RenderToolTests
             RenderTools.RenderFrames(harness.Cut, "hero.cut.json", to: 0.1));
 
         Assert.Equal("300x150", json.GetProperty("cost").GetProperty("size").GetString());
+    }
+
+    [Theory]
+    [InlineData(10, 120, 1200)]   // the case that found this: 10s at 120fps
+    [InlineData(10, 30, 300)]
+    [InlineData(2, 30, 60)]
+    [InlineData(0.5, 120, 60)]
+    public void A_clip_of_n_seconds_is_exactly_n_times_fps_frames(double duration, double fps, int expected)
+    {
+        // The off-by-one this exists to prevent: an inclusive range would give n*fps+1 frames and a
+        // file that overruns by one frame - 10.008s instead of 10.000s at 120fps.
+        var times = ToolSupport.Clip(0, duration, fps);
+
+        Assert.Equal(expected, times.Length);
+        Assert.Equal(0, times[0]);
+        Assert.Equal(duration - 1 / fps, times[^1], 6);      // ends one frame short of the duration
+        Assert.Equal(duration, times.Length / fps, 6);       // ...which is what makes the length exact
+    }
+
+    [Fact]
+    public void An_inclusive_range_is_one_frame_longer_than_the_same_number_as_a_duration()
+    {
+        // Both are correct answers to different questions, and the difference is the bug when the
+        // wrong one is used for a clip length.
+        Assert.Equal(1200, ToolSupport.Clip(0, 10, 120).Length);
+        Assert.Equal(1201, ToolSupport.Range(0, 10, 120).Length);
+    }
+
+    [Fact]
+    public void Clip_rounds_rather_than_truncates_a_binary_inexact_product()
+    {
+        // 10 * 120 is 1199.9999999999998 in double. Truncating loses a frame and makes the clip
+        // short, which is the same class of bug in the other direction.
+        Assert.Equal(1199.9999999999998, 10 * 120d, 10);
+        Assert.Equal(1200, ToolSupport.Clip(0, 10, 120).Length);
+    }
+
+    [Fact]
+    public void A_projects_duration_is_a_length_so_its_video_is_exactly_that_long()
+    {
+        using var harness = new Harness();
+        harness.Cut.SaveProject("hero", new CutProject
+        {
+            Html = Harness.Keyframed,
+            Render = new RenderSettings { Width = 80, Height = 40, Fps = 20, Duration = 1.5 },
+        });
+
+        var json = JsonSerializer.Deserialize<JsonElement>(
+            RenderTools.RenderFrames(harness.Cut, "hero.cut.json"));
+
+        Assert.Equal(30, json.GetProperty("files").GetArrayLength());   // 1.5s x 20fps, not 31
+        Assert.Equal(1.5, json.GetProperty("seconds").GetDouble(), 4);
+    }
+
+    [Fact]
+    public void Duration_and_to_together_are_refused_rather_than_silently_picking_one()
+    {
+        using var harness = new Harness();
+        var name = harness.WriteComposition("keyframed.html", Harness.Keyframed);
+
+        var ex = Assert.Throws<ArgumentException>(() =>
+            RenderTools.RenderVideo(harness.Cut, harness.Encoder, name, duration: 2, to: 2));
+        Assert.Contains("one frame", ex.Message);
     }
 
     [Fact]

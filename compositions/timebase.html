@@ -1,0 +1,209 @@
+<!--
+  A 120 fps / 10 second timebase test.
+
+  Two jobs. The fast movers at the top only look smooth at a high frame rate - the shuttle crosses
+  1000px in 420ms and the rotor turns three times a second, so at 30 fps they strobe and at 120 fps
+  they do not. The ruler at the bottom makes the DURATION checkable rather than asserted: the
+  playhead is one linear 10s sweep across a track whose width is exactly ten 100px seconds, so at
+  the final frame it must sit on the 10s mark. If the clip is long or short, the picture says so.
+
+  Avoids two engine bugs found while building this renderer, both filed:
+    - Wixely/CupriFace#161 - align-items:center does nothing to an auto-width item in a COLUMN
+      flex container, so every centred thing here has an explicit width.
+    - Wixely/CupriFace#162 - border-radius in percent renders square, so circles use 999px.
+-->
+<div class="stage">
+
+  <div class="head">
+    <div class="eyebrow">CUPRICUT TIMEBASE</div>
+    <div class="title">120 fps &middot; 10.000 s</div>
+  </div>
+
+  <!-- fast movers: the reason to render at 120 -->
+  <div class="lab">
+    <div class="rotorbox">
+      <div class="rotor"><div class="arm"></div><div class="hub"></div></div>
+    </div>
+
+    <div class="shuttlebox">
+      <div class="rail"></div>
+      <div class="shuttle"></div>
+    </div>
+  </div>
+
+  <!-- the ruler: ten 100px seconds, one 10s sweep -->
+  <div class="ruler">
+    <div class="track">
+      <div class="fill"></div>
+
+      <div class="tick k0"></div><div class="tick k1"></div><div class="tick k2"></div>
+      <div class="tick k3"></div><div class="tick k4"></div><div class="tick k5"></div>
+      <div class="tick k6"></div><div class="tick k7"></div><div class="tick k8"></div>
+      <div class="tick k9"></div><div class="tick k10"></div>
+
+      <div class="playhead"></div>
+    </div>
+
+    <div class="nums">
+      <div class="n n0">0</div><div class="n n0 on">0</div>
+      <div class="n n1">1</div><div class="n n1 on">1</div>
+      <div class="n n2">2</div><div class="n n2 on">2</div>
+      <div class="n n3">3</div><div class="n n3 on">3</div>
+      <div class="n n4">4</div><div class="n n4 on">4</div>
+      <div class="n n5">5</div><div class="n n5 on">5</div>
+      <div class="n n6">6</div><div class="n n6 on">6</div>
+      <div class="n n7">7</div><div class="n n7 on">7</div>
+      <div class="n n8">8</div><div class="n n8 on">8</div>
+      <div class="n n9">9</div><div class="n n9 on">9</div>
+      <div class="n n10">10</div><div class="n n10 on">10</div>
+    </div>
+  </div>
+
+</div>
+
+<style>
+  .stage {
+    width: 100%; height: 100%;
+    font-family: "Noto Sans";
+    background: linear-gradient(160deg, #0b0e14 0%, #141b27 55%, #1a2433 100%);
+  }
+
+  /* ---- heading ---------------------------------------------------------------------- */
+
+  .head { width: 1000px; margin: 54px 0 0 140px; }
+
+  .eyebrow {
+    width: 1000px;
+    font-size: 13px; font-weight: 700; letter-spacing: 4px; color: #d9642a;
+  }
+
+  .title {
+    width: 1000px;
+    font-size: 40px; font-weight: 700; color: #f4f6fb;
+    letter-spacing: -0.5px; margin-top: 6px;
+  }
+
+  /* ---- fast movers ------------------------------------------------------------------ */
+
+  .lab { margin: 44px 0 0 140px; width: 1000px; }
+
+  /* a rotor at 3 turns per second: 24 deg per frame at 30 fps, 6 at 120 */
+  .rotorbox { width: 160px; height: 160px; }
+
+  .rotor {
+    width: 160px; height: 160px;
+    animation: spin 0.3333s linear infinite;
+  }
+
+  .arm {
+    width: 8px; height: 74px;
+    margin-left: 76px;
+    background: linear-gradient(180deg, #d9642a 0%, #e8a04a 100%);
+    border-radius: 4px;
+  }
+
+  .hub {
+    width: 22px; height: 22px;
+    margin-left: 69px;
+    background: #f4f6fb;
+    border-radius: 999px;
+  }
+
+  /* a shuttle crossing 1000px in 420ms, with three lagging ghosts */
+  .shuttlebox { width: 1000px; height: 60px; margin-top: 26px; }
+
+  .rail {
+    width: 1000px; height: 2px;
+    background: #263349;
+    margin-top: 29px;
+  }
+
+  .shuttle {
+    width: 34px; height: 34px;
+    background: #4ec9b0;
+    border-radius: 999px;
+    margin-top: -47px;
+    animation: shuttle 0.84s ease-in-out infinite alternate;
+  }
+
+  /* ---- the ruler -------------------------------------------------------------------- */
+
+  /* position:absolute inside a positioned track, rather than a stack of negative margins. The
+     negative-margin version drifted: each label's height is its line box, which is not the 22px
+     the margin assumed, so the row sloped by ~2px per number. */
+  .ruler { margin: 62px 0 0 140px; width: 1000px; position: relative; }
+
+  /* exactly ten 100px seconds */
+  .track {
+    width: 1000px; height: 46px;
+    background: #161d29; border-radius: 4px;
+    position: relative;
+  }
+
+  /* the elapsed fill sits UNDER the ticks, so the ticks stay readable as it passes them */
+  .fill {
+    position: absolute; left: 0; top: 0;
+    height: 46px;
+    background: #223047;
+    border-radius: 4px;
+    animation: sweepw 10s linear both;
+  }
+
+  .tick { position: absolute; top: 0; width: 2px; height: 46px; background: #3a4c6b; }
+  .k0  { left: 0px;   }
+  .k1  { left: 100px; }
+  .k2  { left: 200px; }
+  .k3  { left: 300px; }
+  .k4  { left: 400px; }
+  .k5  { left: 500px; }
+  .k6  { left: 600px; }
+  .k7  { left: 700px; }
+  .k8  { left: 800px; }
+  .k9  { left: 900px; }
+  .k10 { left: 998px; }
+
+  .playhead {
+    position: absolute; left: 0; top: -8px;
+    width: 4px; height: 62px;
+    background: #d9642a;
+    border-radius: 2px;
+    animation: sweepx 10s linear both;
+  }
+
+  .nums { position: relative; width: 1000px; height: 24px; margin-top: 14px; }
+
+  /* Lit with OPACITY, not colour: an animated `color` had no effect, so every marker stayed dim.
+     Two stacked copies - a dim one always on, a bright one faded in on its second. */
+  .n {
+    position: absolute; top: 0;
+    width: 30px; height: 24px;
+    font-size: 15px; font-weight: 700;
+    color: #f4f6fb;
+    opacity: 0.22;
+  }
+  .n.on { opacity: 0; animation: lit 0.02s linear both; }
+
+  .n0  { left: -6px;  } .n0.on  { animation-delay: 0s; }
+  .n1  { left: 94px;  } .n1.on  { animation-delay: 1s; }
+  .n2  { left: 194px; } .n2.on  { animation-delay: 2s; }
+  .n3  { left: 294px; } .n3.on  { animation-delay: 3s; }
+  .n4  { left: 394px; } .n4.on  { animation-delay: 4s; }
+  .n5  { left: 494px; } .n5.on  { animation-delay: 5s; }
+  .n6  { left: 594px; } .n6.on  { animation-delay: 6s; }
+  .n7  { left: 694px; } .n7.on  { animation-delay: 7s; }
+  .n8  { left: 794px; } .n8.on  { animation-delay: 8s; }
+  .n9  { left: 894px; } .n9.on  { animation-delay: 9s; }
+  /* 9.98s, not 10s: the last frame of a 10.000s clip is at 9.99167s, so a marker set to light at
+     exactly 10 would never appear in the file it is meant to be marking. */
+  .n10 { left: 988px; } .n10.on { animation-delay: 9.98s; }
+
+  /* ---- keyframes -------------------------------------------------------------------- */
+
+  /* Everything that MOVES uses transform: an animated margin-left has no effect (an animated
+     width does - see .fill), so translateX is what actually carries a moving element here. */
+  @keyframes spin     { from { transform: rotate(0deg); }        to { transform: rotate(360deg); } }
+  @keyframes shuttle  { from { transform: translateX(0px); }     to { transform: translateX(966px); } }
+  @keyframes sweepw   { from { width: 0px; }                     to { width: 1000px; } }
+  @keyframes sweepx   { from { transform: translateX(0px); }     to { transform: translateX(996px); } }
+  @keyframes lit      { from { opacity: 0; }                     to { opacity: 1; } }
+</style>

@@ -128,7 +128,8 @@ The CLI has the same verbs over the same services:
 cupricut probe
 cupricut frame  --composition lower-third.html --t 1.2
 cupricut sheet  --composition lower-third.html --duration 3 --count 9
-cupricut video  --composition lower-third.html --to 3 --codec h264
+cupricut video  --composition lower-third.html --duration 3 --codec h264
+cupricut video  --composition timebase.html --duration 10 --fps 120   # 1200 frames, 10.000s
 cupricut projects
 ```
 
@@ -157,6 +158,14 @@ are about writing:
 | `Cut:MaxFrames` | `1800` | ceiling on *swept* frames per call — a frame is rendered by rendering every frame before it, so that is the real cost |
 | `Cut:MaxPixels` | `8294400` | ceiling on pixels per frame, after `scale` (3840×2160) |
 | `Cut:EnableVideo` | `true` | off means PNG only, ffmpeg never launched |
+
+### `duration` and `to` differ by one frame, on purpose
+
+`duration` is a **length**: `duration x fps` frames covering `[from, from+duration)`. `--duration 10
+--fps 120` is 1200 frames and a file ffprobe reports as exactly `10.000000`. `to` is an **inclusive
+endpoint** and keeps the frame at `t=to`, which is one frame more — right for sampling, wrong for a
+clip length, and the reason a renderer that conflates them quietly overruns. A project's `duration`
+is a length. Naming both is refused rather than resolved.
 
 ## Licence
 

@@ -107,7 +107,9 @@ public static class Program
         var loaded = cut.LoadComposition(opts.Require("composition"));
         var fps = opts.Number("fps", loaded.Defaults?.Fps ?? cut.Options.DefaultFps);
         var from = opts.Number("from", 0);
-        var to = opts.Number("to", loaded.Defaults?.Duration ?? 1);
+        var times = opts.Has("to")
+            ? Range(from, opts.Number("to", 1), fps)
+            : Clip(from, opts.Number("duration", loaded.Defaults?.Duration ?? 1), fps);
         var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
 
         var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
@@ -115,7 +117,7 @@ public static class Program
         SweepReport report;
         try
         {
-            report = cut.Sweep(loaded, Spec(opts, Range(from, to, fps), fps),
+            report = cut.Sweep(loaded, Spec(opts, times, fps),
                 frame => pending.Add((FrameEncoder.Copy(frame.Image), Path.Combine(directory, $"{stem}_{frame.Index:D5}.png"))));
         }
         catch
@@ -137,13 +139,21 @@ public static class Program
         var defaults = loaded.Defaults;
         var fps = opts.Number("fps", defaults?.Fps ?? cut.Options.DefaultFps);
         var from = opts.Number("from", 0);
-        var to = opts.Number("to", defaults?.Duration ?? 3);
         var alpha = opts.Has("alpha") || (defaults?.Alpha ?? false);
+
+        // --duration is a LENGTH: duration x fps frames exactly. --to is an inclusive endpoint,
+        // one frame longer. A project's duration is a length.
+        if (opts.Has("duration") && opts.Has("to"))
+            throw new ArgumentException("Give either --duration or --to, not both - they differ by one frame.");
+
+        var times = opts.Has("to")
+            ? Range(from, opts.Number("to", 3), fps)
+            : Clip(from, opts.Number("duration", defaults?.Duration ?? 3), fps);
         var codec = VideoEncoder.Resolve(opts.Text("codec") ?? defaults?.Codec, alpha);
         var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
         var path = cut.ResolveWrite(stem + codec.Extension);
 
-        var (video, report) = encoder.Encode(loaded, Spec(opts, Range(from, to, fps), fps), path, codec, fps);
+        var (video, report) = encoder.Encode(loaded, Spec(opts, times, fps), path, codec, fps);
 
         Console.WriteLine($"{video.Path}  ({video.Bytes:N0} bytes, {video.Frames} frames, {video.Seconds:0.###}s, {codec.Name})");
         Report(report);
@@ -265,6 +275,14 @@ public static class Program
             : Path.GetFileNameWithoutExtension(file);
     }
 
+    /// <summary>A clip of exactly `duration` seconds: duration x fps frames covering [from, from+duration).
+    /// The inclusive counterpart is <see cref="Range"/>, which is one frame longer.</summary>
+    private static double[] Clip(double from, double duration, double fps)
+    {
+        var count = (int)Math.Round(duration * fps, MidpointRounding.AwayFromZero);
+        return [.. Enumerable.Range(0, count).Select(i => Math.Round(from + i / fps, 6, MidpointRounding.AwayFromZero))];
+    }
+
     private static double[] Range(double from, double to, double fps)
     {
         var count = (int)Math.Floor((to - from) * fps + 1e-9);
@@ -325,8 +343,8 @@ public static class Program
           cupricut frame  --composition <file> [--t 1.5] [--out frame.png]
           cupricut sheet  --composition <file> [--duration 3] [--count 9 | --every 0.25]
                                                [--columns 3] [--thumb 320] [--out sheet.png]
-          cupricut frames --composition <file> [--from 0] [--to 3] [--fps 30] [--out <dir>]
-          cupricut video  --composition <file> [--from 0] [--to 3] [--fps 30]
+          cupricut frames --composition <file> [--duration 3 | --to 3] [--fps 30] [--out <dir>]
+          cupricut video  --composition <file> [--duration 3 | --to 3] [--fps 30]
                                                [--codec h264|h265|vp9|prores|gif] [--out clip]
           cupricut probe
           cupricut fonts  [--composition <file>]
@@ -346,6 +364,10 @@ public static class Program
           --ffmpeg <path>            override Cut:FfmpegPath
           --content-root <dir>       where CupriCut.json, fonts/ and compositions/ live
           --verbose                  log the sweep, and print stack traces
+
+        --duration is a LENGTH: duration x fps frames exactly, so --duration 10 --fps 120 is a
+        1200-frame, 10.000s clip. --to is an INCLUSIVE endpoint and keeps the frame at t=to, which
+        is one frame more. Give one or the other, never both.
 
         Every verb sweeps from t=0. A frame is a function of t AND the frames before it, so the
         frame at t is the last of a sweep - which is the frame the video contains.

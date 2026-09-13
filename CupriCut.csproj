@@ -16,6 +16,13 @@
   </ItemGroup>
 
   <ItemGroup>
+    <!-- The tests exercise the tool layer's helpers directly - frame-count arithmetic above all,
+         which is where an off-by-one becomes a video of the wrong length. Better than making
+         ToolSupport public purely so a test can reach it. -->
+    <InternalsVisibleTo Include="CupriCut.Tests" />
+  </ItemGroup>
+
+  <ItemGroup>
     <FrameworkReference Include="Microsoft.AspNetCore.App" />
   </ItemGroup>
 

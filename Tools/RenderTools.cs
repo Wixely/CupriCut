@@ -179,7 +179,11 @@ public static class RenderTools
     {
         var loaded = cut.LoadComposition(composition);
         var rate = fps > 0 ? fps : loaded.Defaults?.Fps > 0 ? loaded.Defaults.Fps : cut.Options.DefaultFps;
-        var last = to > 0 ? to : loaded.Defaults?.Duration ?? 1;
+        // An explicit `to` is an inclusive endpoint; a project's duration is a length, so it yields
+        // exactly duration x fps files - the same count render_video would produce.
+        var times = to > 0
+            ? ToolSupport.Range(from, to, rate)
+            : ToolSupport.Clip(from, loaded.Defaults?.Duration ?? 1, rate);
         var stem = ToolSupport.SafeStem(outputDirectory ?? composition, "frames");
         var directory = cut.ResolveWrite(Path.Combine(stem, ".keep"));
         directory = Path.GetDirectoryName(directory)!;
@@ -196,7 +200,7 @@ public static class RenderTools
                     Width = width,
                     Height = height,
                     Scale = scale,
-                    Times = ToolSupport.Range(from, last, rate),
+                    Times = times,
                     SweepFps = rate,
                     Background = ToolSupport.ParseColor(background),
                     Alpha = alpha,
@@ -216,7 +220,8 @@ public static class RenderTools
             directory,
             fps = rate,
             from,
-            to = last,
+            to = times[^1],
+            seconds = Math.Round(times.Length / rate, 4),
             files = written.Select(Path.GetFileName),
             cost = ToolSupport.Cost(report),
         }, JsonOpts.Default);
@@ -237,7 +242,8 @@ public static class RenderTools
         VideoEncoder encoder,
         [Description("Composition to render: an HTML file, relative to a configured composition root.")] string composition,
         [Description("First second to keep. The sweep always starts at 0 regardless.")] double from = 0,
-        [Description("Last second to keep. Defaults to a project's own duration.")] double to = 0,
+        [Description("Clip length in seconds. duration x fps frames exactly, so 10 at 120 fps is a 1200-frame, 10.000s file. Defaults to a project's own duration.")] double duration = 0,
+        [Description("Alternative to duration: an INCLUSIVE last second to keep, which is one frame longer than the same number as a duration.")] double to = 0,
         [Description("Frames per second, for both the sweep and the output.")] double fps = 0,
         [Description("Layout viewport width in CSS pixels.")] int width = 0,
         [Description("Layout viewport height in CSS pixels.")] int height = 0,
@@ -252,8 +258,16 @@ public static class RenderTools
         var loaded = cut.LoadComposition(composition);
         var defaults = loaded.Defaults;
         var rate = fps > 0 ? fps : defaults?.Fps > 0 ? defaults.Fps : cut.Options.DefaultFps;
-        var last = to > 0 ? to : defaults?.Duration ?? 3;
         var transparent = alpha ?? defaults?.Alpha ?? false;
+
+        // A length and an endpoint are different questions. duration (and a project's own duration,
+        // which is a length) gives exactly duration x fps frames; an explicit `to` is an endpoint
+        // and is kept, which is one frame more. Naming both is ambiguous, so it is refused.
+        if (duration > 0 && to > 0)
+            throw new ArgumentException("Give either duration or to, not both - a length and an inclusive endpoint differ by one frame.", nameof(duration));
+
+        var span = duration > 0 ? duration : to > 0 ? 0 : defaults?.Duration ?? 3;
+        var times = span > 0 ? ToolSupport.Clip(from, span, rate) : ToolSupport.Range(from, to, rate);
         var picked = VideoEncoder.Resolve(codec ?? defaults?.Codec, transparent);
         var stem = ToolSupport.SafeStem(output ?? composition, "render");
         var path = cut.ResolveWrite(stem + picked.Extension);
@@ -266,7 +280,7 @@ public static class RenderTools
                 Width = width,
                 Height = height,
                 Scale = scale,
-                Times = ToolSupport.Range(from, last, rate),
+                Times = times,
                 SweepFps = rate,
                 Background = ToolSupport.ParseColor(background),
                 Alpha = alpha,

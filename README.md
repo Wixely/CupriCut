@@ -187,7 +187,8 @@ Annotations are stored **in the project**, because that is already the file a la
 in **normalised 0–1 coordinates**, so a note drawn on a 1280×720 preview still means the same region
 when the project renders at 3840×2160.
 
-The GUI is itself a `CupriApp` — CupriCut's interface is drawn by the engine CupriCut renders with.
+Built on **CupriFace 0.24.1**. The GUI is itself a `CupriApp` — CupriCut's interface is drawn by the
+engine CupriCut renders with.
 That is why it was cheap: the preview is an `ISurfaceSource`, the seam the engine already has for
 live pixel producers, so it costs no PNG encode; and the region drag is `OnPointer`, the same one a
 pinch gesture uses. Nothing here needed an engine change.

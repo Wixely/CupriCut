@@ -16,11 +16,12 @@ namespace CupriCut.Gui;
 /// controller is what it DOES. The split is what lets the markup and the model be tested headlessly
 /// — <c>doc.RenderToImage</c> on this app needs no window at all.</para>
 ///
-/// <para>Three engine bugs are routed around deliberately, all filed from this repository:
-/// Wixely/CupriFace#161 (<c>align-items:center</c> does nothing to an auto-width item in a column
-/// flex container — so everything centred here has an explicit width), #162 (percentage
-/// <c>border-radius</c> renders square) and #163 (multi-value <c>border-radius</c> is dropped
-/// entirely — so every radius here is a single px value).</para>
+/// <para>Three engine bugs were routed around while this was written — Wixely/CupriFace#161
+/// (<c>align-items:center</c> did nothing to an auto-width item in a column flex container), #162
+/// (percentage <c>border-radius</c> painted a square) and #163 (multi-value <c>border-radius</c>
+/// was dropped entirely). All three are <b>fixed in CupriFace 0.24.1</b>, which this depends on.
+/// The workarounds are gone from the markup; the layout still flexes rather than using fixed
+/// columns, which was always the better shape and is unrelated to those bugs.</para>
 /// </summary>
 public sealed class StudioApp(StudioModel model) : CupriApp
 {

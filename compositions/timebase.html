@@ -7,10 +7,11 @@
   playhead is one linear 10s sweep across a track whose width is exactly ten 100px seconds, so at
   the final frame it must sit on the 10s mark. If the clip is long or short, the picture says so.
 
-  Avoids two engine bugs found while building this renderer, both filed:
-    - Wixely/CupriFace#161 - align-items:center does nothing to an auto-width item in a COLUMN
-      flex container, so every centred thing here has an explicit width.
-    - Wixely/CupriFace#162 - border-radius in percent renders square, so circles use 999px.
+  Two engine bugs found while building this renderer shaped the CSS below, both filed and both
+  fixed in CupriFace 0.24.1: Wixely/CupriFace#161 (align-items:center did nothing to an auto-width
+  item in a column flex container) and #162 (border-radius in percent painted a square). The
+  explicit widths and the 999px radii stay because they are exact here rather than because they
+  have to be - a 999px radius on a 34px dot is the same circle 50% now gives.
 -->
 <div class="stage">
 

@@ -65,6 +65,29 @@ filesystem tool and no memory of the conversation that produced it.
 **Done when** one run can `save_project`, and a second run with no shared context can
 `load_project`, `update_project` and `render_video` from it.
 
+## Milestone 1c — the studio window (3–4 days)
+
+The loop this whole tool is built around is *look, adjust, look* — and so far only the agent gets to
+look. A person reviewing the output has to open a PNG somewhere else, and then describe what is
+wrong in prose. The window closes that: it previews the render, and it lets the reviewer **point at
+the pixels** rather than describe them.
+
+12. **Two modes, one binary.** `CupriCut` opens a window by default; `-c` / `--console` runs
+    headless. **Both host the MCP server** — the window is a second face on the same service, never
+    a separate app. Docker and Windows Service imply `-c`, and a window that cannot open falls back
+    to console with a message rather than exiting.
+13. **The preview.** The GUI is itself a `CupriApp`, so CupriCut's own interface is drawn by the
+    engine it renders with. The rendered frame reaches the window through `ISurfaceSource` — the
+    seam the engine already has for live pixel producers — so a preview costs no PNG encode and no
+    base64, just the `SKImage` the sweep already made.
+14. **Annotations: the reviewer points, the agent reads.** Drag a box on the preview, type a note.
+    It is stored **in the project**, because that is already the file a later run opens, and in
+    **normalised 0–1 coordinates**, so a note survives the composition being re-rendered at another
+    size. `list_annotations` / `resolve_annotation` are how the agent picks them up and closes them.
+
+**Done when** a reviewer can scrub to a frame, draw a box round the thing that is wrong, type
+"logo enters too late", and a separate agent run can read that back with the time and the region.
+
 ## Milestone 2 — the timeline (3–4 days)
 
 12. **Timeline layer.** `data-start` / `data-duration` / `data-track` decide what is in the document
@@ -107,6 +130,9 @@ filesystem tool and no memory of the conversation that produced it.
 | **Determinism advertised** | Identical pixels per OS, identical layout across OSes. Never "render anywhere, reproduce anywhere". |
 | **Fonts** | `FontPolicy.RegisteredOnly`, always. A family that would resolve to the machine is an error naming the family. |
 | **Project file** | `.cut.json`, self-contained, assets inlined as `data:` URIs. A project is a composition every render tool accepts, and the source of defaults for arguments the caller omitted — never a second render path. |
+| **The window is a second face, not a second app** | GUI and console both host the MCP server over one `CupriCutService`. The window renders nothing the server could not; it exists so a person can look and point. |
+| **Annotations live in the project** | Not a sidecar. `.cut.json` is already "everything needed to regenerate this", and review feedback is part of that. Annotating therefore requires a project — a bare `.html` composition must be saved as one first. |
+| **Annotation coordinates are normalised** | 0–1 of the frame, never pixels. A note drawn on a 1280×720 preview has to still mean the same region when the project is rendered at 3840×2160. |
 | **An inexact length is snapped and announced** | A clip is whole frames, so a length that is not a whole number of them moves to the nearest one — and the delta is reported **always**, with a note naming a frame rate that would have been exact. Never absorbed silently. |
 | **No frame ceiling** | `Cut:MaxFrames` defaults to **0**. A ten-minute title sequence is an ordinary thing to want, and a ceiling refused it. The cost of length is handled where it arises — a PNG sequence streams through `FrameSequenceWriter` in bounded memory instead of collecting the run — not by refusing the request. The knob stays as an opt-in control for a shared instance. |
 | **The three roots** | `Cut:CompositionRoots` read-only, `Cut:OutputRoot` write-only, `Cut:ProjectRoot` read-write and `.cut.json` only. A renderer's safety model is about what it may write, so the write surface is named in three places and nowhere else. |

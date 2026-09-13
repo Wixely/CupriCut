@@ -94,4 +94,6 @@ EXPOSE 5722
 # output and projects are the two directories the server writes to; compositions is what it reads.
 VOLUME ["/app/logs", "/app/output", "/app/projects", "/app/compositions"]
 
-ENTRYPOINT ["./CupriCut"]
+# -c explicitly, even though DOTNET_RUNNING_IN_CONTAINER above already implies it: a container has
+# no display, and "why did it try to open a window" is a worse thing to debug than a redundant flag.
+ENTRYPOINT ["./CupriCut", "-c"]

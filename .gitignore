@@ -31,6 +31,9 @@ frames/
 
 # …but a composition's own assets do belong, so a PNG under compositions/ is committed on purpose.
 !compositions/**/*.png
+# …and so does the studio window's screenshot, which is how the GUI gets reviewed at all: it has no
+# display in CI, so the test renders it headlessly and this is the artifact.
+!docs/*.png
 
 # Projects are the read-write root: an agent's working files, not the repository's.
 projects/*

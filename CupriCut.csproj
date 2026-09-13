@@ -28,6 +28,9 @@
 
   <ItemGroup>
     <PackageReference Include="CupriFace" />
+    <!-- The desktop window. The MCP server does not need it, but one binary serves both faces and
+         -c is what turns the window off (Docker and Windows Service imply it). -->
+    <PackageReference Include="CupriFace.Shell" />
     <PackageReference Include="SkiaSharp" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />

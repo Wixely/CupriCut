@@ -204,6 +204,22 @@ public sealed class CupriCutService
             .Order(StringComparer.Ordinal)];
     }
 
+    /// <summary>Read, change, write - the shape every annotation edit needs, done in one place so a
+    /// concurrent GUI edit and MCP edit cannot interleave a lost update.</summary>
+    public CutProject EditProject(string name, Action<CutProject> edit)
+    {
+        lock (_projectLock)
+        {
+            var project = LoadProject(name);
+            edit(project);
+            SaveProject(name, project);
+            return project;
+        }
+    }
+
+    // The window and the MCP server are two faces on this one service, and both write annotations.
+    private readonly Lock _projectLock = new();
+
     public static string EngineVersion => $"CupriFace {typeof(CupriDocument).Assembly.GetName().Version}";
 
     public void EnsureVideoAllowed()

@@ -119,8 +119,14 @@ dotnet nuget update source GitHub-Wixely-Packages   --username <your-github-user
 
 dotnet build
 dotnet test
-dotnet run --project CupriCut.csproj      # the MCP server on http://localhost:5722/mcp
+dotnet run --project CupriCut.csproj      # studio window + MCP server
+dotnet run --project CupriCut.csproj -- -c   # headless: MCP server only
 ```
+
+**Two faces, one binary.** `CupriCut` opens the studio window by default and `-c` runs headless —
+and **both host the MCP server**. The window is a second face on the same service, never a separate
+app. A Windows Service or a container implies `-c`, and a window that cannot open falls back to
+serving headlessly rather than taking the server down with it.
 
 The CLI has the same verbs over the same services:
 
@@ -144,6 +150,35 @@ docker build --secret id=NUGET_AUTH_TOKEN,env=GITHUB_TOKEN -t cupricut .
 
 docker run --rm -p 5722:5722   -v "$PWD/compositions:/app/compositions:ro"   -v "$PWD/projects:/app/projects"   -v "$PWD/output:/app/output"   cupricut
 ```
+
+## The studio window: point instead of describing
+
+The loop is look, adjust, look — and until the window, only the agent got to look. A reviewer had to
+open a PNG somewhere else and then put the problem into prose.
+
+![The studio window](docs/studio.png)
+
+Pick a project, scrub to a frame, drag a box round what is wrong and type a sentence. The agent then
+reads it back:
+
+```
+list_annotations(project: "review")
+
+  [ad54d3d2] t=1.2s  512x180 at (64,216) of 1280x720  "logo enters too late and sits too far left"
+  see it with: render_frame(composition: "review.cut.json", t: 1.2)
+
+resolve_annotation(project: "review", id: "ad54d3d2",
+                   resolution: "moved the logo keyframe from 1.2s to 0.6s")
+```
+
+Annotations are stored **in the project**, because that is already the file a later run opens, and
+in **normalised 0–1 coordinates**, so a note drawn on a 1280×720 preview still means the same region
+when the project renders at 3840×2160.
+
+The GUI is itself a `CupriApp` — CupriCut's interface is drawn by the engine CupriCut renders with.
+That is why it was cheap: the preview is an `ISurfaceSource`, the seam the engine already has for
+live pixel producers, so it costs no PNG encode; and the region drag is `OnPointer`, the same one a
+pinch gesture uses. Nothing here needed an engine change.
 
 ## Safety, for a tool that writes files
 

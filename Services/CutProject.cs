@@ -42,9 +42,18 @@ public sealed class CutProject
     /// <c>data:</c> URIs.</summary>
     public Dictionary<string, string> Assets { get; set; } = new(StringComparer.Ordinal);
 
+    /// <summary>Regions of the frame a reviewer marked, with what they said about each. Kept here
+    /// rather than in a sidecar because this file is already "everything needed to regenerate and
+    /// judge this animation", and review feedback is part of judging it.</summary>
+    public List<Annotation> Annotations { get; set; } = [];
+
     /// <summary>Free-text notes: what this is for, what was tried, what to fix next. The field a
     /// second run reads to find out what the first one was thinking.</summary>
     public ProjectMeta Meta { get; set; } = new();
+
+    /// <summary>Annotations still waiting on someone.</summary>
+    public IEnumerable<Annotation> OpenAnnotations =>
+        Annotations.Where(a => a.Status == AnnotationStatus.Open);
 
     public static readonly JsonSerializerOptions Json = new()
     {
@@ -53,6 +62,7 @@ public sealed class CutProject
         PropertyNameCaseInsensitive = true,
         DefaultIgnoreCondition = JsonIgnoreCondition.WhenWritingNull,
         Encoder = System.Text.Encodings.Web.JavaScriptEncoder.UnsafeRelaxedJsonEscaping,
+        Converters = { new JsonStringEnumConverter() },
     };
 
     /// <summary>The extension that makes a path a project. Checked rather than sniffed, so a plain

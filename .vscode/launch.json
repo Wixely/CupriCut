@@ -1,0 +1,32 @@
+{
+  "version": "0.2.0",
+  "configurations": [
+    {
+      "name": "CupriCut (MCP server)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/bin/Debug/net10.0/CupriCut.dll",
+      "cwd": "${workspaceFolder}/bin/Debug/net10.0",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      "name": "cupricut contact_sheet (example)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/cli/bin/Debug/net10.0/CupriCut.Cli.dll",
+      "args": [
+        "sheet",
+        "--composition", "lower-third.html",
+        "--duration", "3",
+        "--count", "9",
+        "--content-root", "${workspaceFolder}/bin/Debug/net10.0"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    }
+  ]
+}

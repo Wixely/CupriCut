@@ -1,0 +1,23 @@
+<!--
+  The same verbs as the MCP server, over the same services. A renderer is also a build step, and a
+  CI job is not an MCP client - so this exists for the same reason the server does, and shares
+  everything below the tool layer by referencing the server project rather than re-implementing it.
+
+  The assembly is CupriCut.Cli and the COMMAND is cupricut. Those differ because NuGet refuses two
+  assemblies in one solution whose names differ only by case, and the server has to stay
+  CupriCut.exe. Packaging installs this under the name users actually type: the Dockerfile drops a
+  cupricut shim on PATH and the release zips ship it beside the server.
+-->
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CupriCut.Cli</RootNamespace>
+    <AssemblyName>CupriCut.Cli</AssemblyName>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <ProjectReference Include="..\CupriCut.csproj" />
+  </ItemGroup>
+
+</Project>

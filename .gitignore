@@ -32,6 +32,11 @@ frames/
 # …but a composition's own assets do belong, so a PNG under compositions/ is committed on purpose.
 !compositions/**/*.png
 
+# Projects are the read-write root: an agent's working files, not the repository's.
+projects/*
+# ...except the worked example, so a fresh clone has something to render.
+!projects/demo.cut.json
+
 # Fonts are licensed separately and are a deliberate decision every time, never an accident.
 *.ttf
 *.otf
@@ -39,7 +44,16 @@ frames/
 *.woff
 *.woff2
 
+# The deliberate decision the rule above asks for: the two Noto Sans faces CupriCut ships so that
+# FontPolicy.RegisteredOnly - which is always on - has something to resolve to on a bare install.
+# SIL Open Font Licence 1.1, text in fonts/OFL.txt.
+!fonts/NotoSans-Regular.ttf
+!fonts/NotoSans-Bold.ttf
+
 # Editors
 .vs/
 .idea/
 *.user
+# Per-developer window colours (Peacock and friends). launch.json and tasks.json ARE committed:
+# they say how to run this thing, which is repository knowledge.
+.vscode/settings.json

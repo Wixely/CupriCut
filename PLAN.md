@@ -38,31 +38,58 @@ is a plain document and `t` drives it.
 **Done when** an agent can point a tool at an HTML file and get back a contact sheet, and a CI job
 can turn the same file into an MP4.
 
+## Milestone 1b — the project file (1–2 days)
+
+The thing that makes the agent loop survive the end of a session. Everything above renders a file
+an agent has to keep somewhere else; this gives the work a home that CupriCut itself owns, so a
+second MCP run can open what a first one made, read it, adjust it and re-render — with no
+filesystem tool and no memory of the conversation that produced it.
+
+8. **`.cut.json`, one self-contained file.** HTML, CSS, the render settings that regenerate the
+   animation (`width`, `height`, `scale`, `fps`, `duration`, `background`, `alpha`, `codec`) and
+   free-text `meta` — intent, notes, revision history. **Assets are inlined as `data:` URIs**, which
+   is what makes it genuinely one file: the engine's `SourceResolver` already takes a `data:` URI
+   everywhere it takes a path, so an inlined logo needs no new engine road.
+9. **A project is a composition.** `render_frame`, `contact_sheet`, `render_frames` and
+   `render_video` take a `.cut.json` wherever they take an `.html`, and its `render` block supplies
+   every argument the caller left out. One sweep function still, one meaning of `t` still — the
+   project is a *source of defaults*, never a second render path.
+10. **`Cut:ProjectRoot`** — the one directory that is both read and written, alongside the
+    read-only `Cut:CompositionRoots` and the write-only `Cut:OutputRoot`. Only `.cut.json` may be
+    written there, so a read-write root does not become a general file drop.
+11. **Tools:** `save_project` (create or replace), `load_project` (read it back whole, which is the
+    tool the second run actually needs), `update_project` (patch named fields, so an agent can
+    change the CSS without resending the HTML), `list_projects`, and `attach_asset` (inline a file
+    from a composition root as a `data:` URI). Same verbs on the CLI.
+
+**Done when** one run can `save_project`, and a second run with no shared context can
+`load_project`, `update_project` and `render_video` from it.
+
 ## Milestone 2 — the timeline (3–4 days)
 
-8. **Timeline layer.** `data-start` / `data-duration` / `data-track` decide what is in the document
+12. **Timeline layer.** `data-start` / `data-duration` / `data-track` decide what is in the document
    at `t`, through the ordinary model and binding — elements are kept out until their window opens
    and removed when it closes, so a `@keyframes` on an element starts when the element appears.
    Emit `animation-delay: {start}s` alongside each element's window: the engine's clock is
    absolute and stamps no creation time, and `animation-delay` is measured against that same clock,
    so this is what gives a late element its own zero. Verified by experiment at four sample times.
-9. **`inspect`** — the timeline as data: tracks, windows, fonts asked for, images referenced,
+13. **`inspect`** — the timeline as data: tracks, windows, fonts asked for, images referenced,
    duration.
-10. **`lint`** — the determinism verdict: platform-resolved fonts, sources that never loaded,
+14. **`lint`** — the determinism verdict: platform-resolved fonts, sources that never loaded,
     wall-clock content, and **whether the composition is pure in `t`** (no transitions, no toasts,
     no scroll-driven easing). A pure composition can be sampled at any single `t` for 5.6 ms with no
     sweep, and that is worth telling an author.
 
 ## Milestone 3 — interaction (2 days)
 
-11. **Interaction track.** `data-cut-click="1.2"`, or a JSON sidecar of `(t, action)` pairs, over
+15. **Interaction track.** `data-cut-click="1.2"`, or a JSON sidecar of `(t, action)` pairs, over
     `DispatchClick` and the typing APIs. The engine takes input with no window, so this is something
     a Chrome pipeline cannot do at all. Replay from zero on every seek — correct, and cheap at
     179 fps. Caching per `t` is an optimisation for later, not now.
 
 ## Phase 2 — deferred, deliberately
 
-12. Video seek-to-time in the engine (a renderer needs *the frame at t*, not playback), WOFF 2 in
+16. Video seek-to-time in the engine (a renderer needs *the frame at t*, not playback), WOFF 2 in
     the engine (a real decoder — Brotli plus `glyf`/`loca` reconstruction — not a decompression
     call), audio mux here.
 
@@ -79,17 +106,24 @@ can turn the same file into an MP4.
 | **Engine changes** | None. CupriCut consumes the `CupriFace` package the way Khalkos3D does; timelines and encoders stay out of the engine. |
 | **Determinism advertised** | Identical pixels per OS, identical layout across OSes. Never "render anywhere, reproduce anywhere". |
 | **Fonts** | `FontPolicy.RegisteredOnly`, always. A family that would resolve to the machine is an error naming the family. |
+| **Project file** | `.cut.json`, self-contained, assets inlined as `data:` URIs. A project is a composition every render tool accepts, and the source of defaults for arguments the caller omitted — never a second render path. |
+| **The three roots** | `Cut:CompositionRoots` read-only, `Cut:OutputRoot` write-only, `Cut:ProjectRoot` read-write and `.cut.json` only. A renderer's safety model is about what it may write, so the write surface is named in three places and nowhere else. |
+| **CLI assembly name** | The command is `cupricut`; the assembly is `CupriCut.Cli`. NuGet refuses two assemblies in one solution whose names differ only by case, and the server stays `CupriCut.exe`, so packaging installs the CLI under the name people type. |
 
 ## Open — decide before the code that depends on them
 
-- **Server only, or server plus CLI.** The plan above assumes both over one set of services, because
-  a renderer is also a build step. Cheap now, awkward to retrofit.
-- **Safety limits and their defaults.** A renderer *writes files*, so the analogue of a read-only
-  mode is: `Cut:OutputRoot` (the only directory a tool may write under), `Cut:CompositionRoots` (the
-  only directories it may read compositions and fonts from), `Cut:MaxFrames` / `Cut:MaxPixels` (a
-  runaway request is a full disk), `Cut:EnableVideo` (off → PNG only, no ffmpeg). The names are
-  settled; the defaults are not.
+- ~~**Server only, or server plus CLI.**~~ **Decided: both**, over one set of services. `cli/`
+  references the server project rather than re-implementing anything below the tool layer.
+- ~~**Safety limits and their defaults.**~~ **Decided**, and shipped in `CupriCut.json`:
+  `MaxFrames` **1800** (one minute at 30 fps, and it counts *swept* frames because that is the real
+  cost), `MaxPixels` **8294400** (3840×2160), `EnableVideo` **true** (a renderer that cannot render
+  video is not the safe default, it is a broken one — the write surface is bounded by `OutputRoot`,
+  which is the actual risk), `SettleTimeoutSeconds` **15**, `MaxInlineImageBytes` **4000000** (over
+  it, a tool writes the PNG and returns the path rather than filling a context with base64).
 - **Where the sweep cache lives, if one ever exists.** Milestone 3 note only — replay first.
+- **Whether a project may embed a font.** Assets inline as `data:` URIs today, which would work for
+  a font too — but `FontPolicy.RegisteredOnly` reads faces from `Cut:FontDirectories`, not from the
+  document, so an embedded font needs `@font-face` to be the registration path. Decide with M2.
 
 ## Risks to keep in view
 

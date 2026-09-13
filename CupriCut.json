@@ -1,0 +1,55 @@
+{
+  "Cut": {
+    "CompositionRoots": [ "compositions" ],
+    "OutputRoot": "output",
+    "FontDirectories": [ "fonts" ],
+    "FfmpegPath": "ffmpeg",
+    "EnableVideo": true,
+    "MaxFrames": 1800,
+    "MaxPixels": 8294400,
+    "DefaultWidth": 1280,
+    "DefaultHeight": 720,
+    "DefaultFps": 30,
+    "SettleTimeoutSeconds": 15,
+    "MaxInlineImageBytes": 4000000,
+    "FfmpegTimeoutSeconds": 600
+  },
+  "Server": {
+    "Host": "localhost",
+    "Port": 5722,
+    "Path": "/mcp",
+    "WindowsServiceName": "CupriCut",
+    "Password": ""
+  },
+  "Serilog": {
+    "MinimumLevel": {
+      "Default": "Information",
+      "Override": {
+        "Microsoft": "Warning",
+        "Microsoft.Hosting.Lifetime": "Information",
+        "System": "Warning"
+      }
+    },
+    "WriteTo": [
+      {
+        "Name": "Console",
+        "Args": {
+          "outputTemplate": "[{Timestamp:HH:mm:ss} {Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"
+        }
+      },
+      {
+        "Name": "File",
+        "Args": {
+          "path": "logs/cupricut-.log",
+          "rollingInterval": "Day",
+          "retainedFileCountLimit": 14,
+          "fileSizeLimitBytes": 52428800,
+          "rollOnFileSizeLimit": true,
+          "shared": true,
+          "outputTemplate": "{Timestamp:yyyy-MM-dd HH:mm:ss.fff zzz} [{Level:u3}] {SourceContext}: {Message:lj}{NewLine}{Exception}"
+        }
+      }
+    ],
+    "Enrich": [ "FromLogContext", "WithMachineName", "WithProcessId", "WithThreadId" ]
+  }
+}

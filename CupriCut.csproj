@@ -1,0 +1,58 @@
+<Project Sdk="Microsoft.NET.Sdk">
+
+  <PropertyGroup>
+    <OutputType>Exe</OutputType>
+    <RootNamespace>CupriCut</RootNamespace>
+    <AssemblyName>CupriCut</AssemblyName>
+    <ApplicationIcon>wmcp.ico</ApplicationIcon>
+  </PropertyGroup>
+
+  <ItemGroup>
+    <!-- The project sits at the repository root, so the default glob would swallow the CLI's own
+         Main and the test project. Flat layout, explicit exclusions - see PLAN.md. -->
+    <Compile Remove="cli\**;tests\**;output\**" />
+    <None Remove="cli\**;tests\**;output\**" />
+    <EmbeddedResource Remove="cli\**;tests\**;output\**" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <FrameworkReference Include="Microsoft.AspNetCore.App" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <PackageReference Include="CupriFace" />
+    <PackageReference Include="SkiaSharp" />
+    <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
+    <PackageReference Include="ModelContextProtocol.AspNetCore" />
+    <PackageReference Include="Serilog.AspNetCore" />
+    <PackageReference Include="Serilog.Settings.Configuration" />
+    <PackageReference Include="Serilog.Sinks.Console" />
+    <PackageReference Include="Serilog.Sinks.File" />
+    <PackageReference Include="Serilog.Enrichers.Environment" />
+    <PackageReference Include="Serilog.Enrichers.Process" />
+    <PackageReference Include="Serilog.Enrichers.Thread" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <EmbeddedResource Include="wmcp.ico" LogicalName="MCPSharp.wmcp.ico" />
+  </ItemGroup>
+
+  <ItemGroup>
+    <None Update="CupriCut.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+    </None>
+    <None Update="CupriCut.*.json">
+      <CopyToOutputDirectory>PreserveNewest</CopyToOutputDirectory>
+      <DependentUpon>CupriCut.json</DependentUpon>
+    </None>
+  </ItemGroup>
+
+  <ItemGroup>
+    <!-- Fonts registered into every document. FontPolicy.RegisteredOnly is always on, so a server
+         with no registered face fails every composition that does not carry its own @font-face. -->
+    <None Include="fonts\**" LinkBase="fonts" CopyToOutputDirectory="PreserveNewest" />
+    <!-- The worked examples, so a fresh install has something to render. -->
+    <None Include="compositions\**" LinkBase="compositions" CopyToOutputDirectory="PreserveNewest" />
+  </ItemGroup>
+
+</Project>

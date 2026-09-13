@@ -113,20 +113,13 @@ public static class Program
         var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
 
         var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
-        var pending = new List<(SKBitmap Bitmap, string Path)>();
-        SweepReport report;
-        try
-        {
-            report = cut.Sweep(loaded, Spec(opts, times, fps),
-                frame => pending.Add((FrameEncoder.Copy(frame.Image), Path.Combine(directory, $"{stem}_{frame.Index:D5}.png"))));
-        }
-        catch
-        {
-            foreach (var (bitmap, _) in pending) bitmap.Dispose();
-            throw;
-        }
+        // Streamed in bounded memory - see FrameSequenceWriter. Collecting the run would need
+        // 3.7 MB a frame, which a long sequence does not have.
+        using var writer = new FrameSequenceWriter();
+        var report = cut.Sweep(loaded, Spec(opts, times, fps),
+            frame => writer.Add(frame.Image, Path.Combine(directory, $"{stem}_{frame.Index:D5}.png")));
 
-        var written = FrameEncoder.WriteAll(pending);
+        var written = writer.Complete();
         Console.WriteLine($"{directory}  ({written.Length} PNGs)");
         Report(report);
         return 0;

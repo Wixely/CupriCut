@@ -188,32 +188,25 @@ public static class RenderTools
         var directory = cut.ResolveWrite(Path.Combine(stem, ".keep"));
         directory = Path.GetDirectoryName(directory)!;
 
-        var pending = new List<(SKBitmap Bitmap, string Path)>();
-        SweepReport report;
-        try
-        {
-            report = cut.Sweep(
-                loaded,
-                new SweepSpec
-                {
-                    Composition = composition,
-                    Width = width,
-                    Height = height,
-                    Scale = scale,
-                    Times = times,
-                    SweepFps = rate,
-                    Background = ToolSupport.ParseColor(background),
-                    Alpha = alpha,
-                },
-                frame => pending.Add((FrameEncoder.Copy(frame.Image), Path.Combine(directory, ToolSupport.FrameName(stem, frame.Index, frame.Time)))));
-        }
-        catch
-        {
-            foreach (var (bitmap, _) in pending) bitmap.Dispose();
-            throw;
-        }
+        // Streamed, not collected: a long sequence must not hold every frame in memory. The writer
+        // also applies back-pressure, so the sweep runs at the rate the encoders can keep up with.
+        using var writer = new FrameSequenceWriter();
+        var report = cut.Sweep(
+            loaded,
+            new SweepSpec
+            {
+                Composition = composition,
+                Width = width,
+                Height = height,
+                Scale = scale,
+                Times = times,
+                SweepFps = rate,
+                Background = ToolSupport.ParseColor(background),
+                Alpha = alpha,
+            },
+            frame => writer.Add(frame.Image, Path.Combine(directory, ToolSupport.FrameName(stem, frame.Index, frame.Time))));
 
-        var written = FrameEncoder.WriteAll(pending);
+        var written = writer.Complete();
         return JsonSerializer.Serialize(new
         {
             composition = report.Composition,
@@ -222,7 +215,12 @@ public static class RenderTools
             from,
             to = times[^1],
             seconds = Math.Round(times.Length / rate, 4),
-            files = written.Select(Path.GetFileName),
+            frames = written.Length,
+            // A ten-minute sequence is tens of thousands of names; listing them all would bury the
+            // answer. Past a readable handful, say where they are and what they are called.
+            files = written.Length <= 40 ? written.Select(Path.GetFileName) : null,
+            first = Path.GetFileName(written[0]),
+            last = Path.GetFileName(written[^1]),
             cost = ToolSupport.Cost(report),
         }, JsonOpts.Default);
     }

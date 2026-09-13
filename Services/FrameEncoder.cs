@@ -37,7 +37,10 @@ public static class FrameEncoder
     }
 
     /// <summary>Encode a batch to disk in parallel and return the paths in frame order. The caller
-    /// owns the bitmaps and they are disposed here.</summary>
+    /// owns the bitmaps and they are disposed here.
+    ///
+    /// <para>Only for a batch already known to be small - a contact sheet's cells. A frame sequence
+    /// uses <see cref="FrameSequenceWriter"/>, which does not hold the whole run in memory.</para></summary>
     public static string[] WriteAll(IReadOnlyList<(SKBitmap Bitmap, string Path)> frames)
     {
         var paths = new string[frames.Count];

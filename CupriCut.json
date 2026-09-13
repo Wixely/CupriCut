@@ -5,7 +5,7 @@
     "FontDirectories": [ "fonts" ],
     "FfmpegPath": "ffmpeg",
     "EnableVideo": true,
-    "MaxFrames": 1800,
+    "MaxFrames": 0,
     "MaxPixels": 8294400,
     "DefaultWidth": 1280,
     "DefaultHeight": 720,

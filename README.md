@@ -155,8 +155,8 @@ are about writing:
 | `Cut:CompositionRoots` | `compositions` | the only directories compositions, stylesheets, images and fonts are **read** from |
 | `Cut:OutputRoot` | `output` | the only directory PNGs and videos are **written** to |
 | `Cut:ProjectRoot` | `projects` | the one **read-write** directory, and only `.cut.json` may land in it |
-| `Cut:MaxFrames` | `1800` | ceiling on *swept* frames per call — a frame is rendered by rendering every frame before it, so that is the real cost |
-| `Cut:MaxPixels` | `8294400` | ceiling on pixels per frame, after `scale` (3840×2160) |
+| `Cut:MaxFrames` | `0` | **no limit.** Set it only to bound what one caller can spend on a shared instance |
+| `Cut:MaxPixels` | `8294400` | ceiling on pixels per frame, after `scale` (3840×2160). A single huge *frame* is a different question from a long *clip* |
 | `Cut:EnableVideo` | `true` | off means PNG only, ffmpeg never launched |
 
 ### `duration` and `to` differ by one frame, on purpose

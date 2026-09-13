@@ -87,8 +87,30 @@ public sealed class SweepTests
     }
 
     [Fact]
-    public void A_sweep_over_the_frame_ceiling_is_refused_and_says_why_it_counts_swept_frames()
+    public void There_is_no_frame_ceiling_by_default()
     {
+        // A renderer that cannot make a long clip is not a renderer. MaxFrames defaults to 0,
+        // which means no limit; the cost of length is handled where it arises (streamed PNG
+        // encoding) rather than by refusing the request.
+        using var harness = new Harness();
+        Assert.Equal(0, harness.Options.MaxFrames);
+
+        // 20 seconds at 120 fps is 2400 frames - over the 1800 that used to be the ceiling.
+        var steps = CupriCutService.SweepSteps([20.0], 120);
+        Assert.Equal(2401, steps.Length);
+
+        var name = harness.WriteComposition("keyframed.html", Harness.Keyframed);
+        var rendered = 0;
+        harness.Cut.Sweep(
+            new SweepSpec { Composition = name, Width = 64, Height = 32, Times = [3.0], SweepFps = 600 },
+            _ => rendered++);            // 1801 swept frames, which the old default would refuse
+        Assert.Equal(1, rendered);
+    }
+
+    [Fact]
+    public void A_sweep_over_an_explicitly_configured_ceiling_is_still_refused()
+    {
+        // The knob remains for a shared instance that wants to bound what one caller can spend.
         using var harness = new Harness(o => o.MaxFrames = 10);
         var name = harness.WriteComposition("keyframed.html", Harness.Keyframed);
 

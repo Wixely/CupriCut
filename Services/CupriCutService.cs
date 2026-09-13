@@ -277,7 +277,8 @@ public sealed class CupriCutService
                 $"{width * scale}x{height * scale} is {pixels:N0} pixels per frame, over Cut:MaxPixels ({options.MaxPixels:N0}).");
 
         var steps = SweepSteps(spec.Times, fps);
-        if (steps.Length > options.MaxFrames)
+        // Zero means no ceiling, which is the default: long clips are a supported thing to want.
+        if (options.MaxFrames > 0 && steps.Length > options.MaxFrames)
             throw new CutPolicyException(
                 $"Reaching t={spec.Times.Max():0.###}s at {fps:0.##} fps means sweeping {steps.Length:N0} frames, over Cut:MaxFrames ({options.MaxFrames:N0}). " +
                 "A frame is rendered by rendering every frame before it, so this is the real cost.");

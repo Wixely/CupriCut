@@ -107,6 +107,7 @@ filesystem tool and no memory of the conversation that produced it.
 | **Determinism advertised** | Identical pixels per OS, identical layout across OSes. Never "render anywhere, reproduce anywhere". |
 | **Fonts** | `FontPolicy.RegisteredOnly`, always. A family that would resolve to the machine is an error naming the family. |
 | **Project file** | `.cut.json`, self-contained, assets inlined as `data:` URIs. A project is a composition every render tool accepts, and the source of defaults for arguments the caller omitted — never a second render path. |
+| **No frame ceiling** | `Cut:MaxFrames` defaults to **0**. A ten-minute title sequence is an ordinary thing to want, and a ceiling refused it. The cost of length is handled where it arises — a PNG sequence streams through `FrameSequenceWriter` in bounded memory instead of collecting the run — not by refusing the request. The knob stays as an opt-in control for a shared instance. |
 | **The three roots** | `Cut:CompositionRoots` read-only, `Cut:OutputRoot` write-only, `Cut:ProjectRoot` read-write and `.cut.json` only. A renderer's safety model is about what it may write, so the write surface is named in three places and nowhere else. |
 | **CLI assembly name** | The command is `cupricut`; the assembly is `CupriCut.Cli`. NuGet refuses two assemblies in one solution whose names differ only by case, and the server stays `CupriCut.exe`, so packaging installs the CLI under the name people type. |
 
@@ -115,8 +116,7 @@ filesystem tool and no memory of the conversation that produced it.
 - ~~**Server only, or server plus CLI.**~~ **Decided: both**, over one set of services. `cli/`
   references the server project rather than re-implementing anything below the tool layer.
 - ~~**Safety limits and their defaults.**~~ **Decided**, and shipped in `CupriCut.json`:
-  `MaxFrames` **1800** (one minute at 30 fps, and it counts *swept* frames because that is the real
-  cost), `MaxPixels` **8294400** (3840×2160), `EnableVideo` **true** (a renderer that cannot render
+  ~~`MaxFrames` **1800**~~ → **0, no limit** (see below), `MaxPixels` **8294400** (3840×2160), `EnableVideo` **true** (a renderer that cannot render
   video is not the safe default, it is a broken one — the write surface is bounded by `OutputRoot`,
   which is the actual risk), `SettleTimeoutSeconds` **15**, `MaxInlineImageBytes` **4000000** (over
   it, a tool writes the PNG and returns the path rather than filling a context with base64).

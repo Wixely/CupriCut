@@ -55,10 +55,21 @@ public sealed class CutOptions
     /// <summary>False disables every video tool: PNG output only, ffmpeg never launched.</summary>
     public bool EnableVideo { get; set; } = true;
 
-    /// <summary>Ceiling on the number of frames a single call may <b>sweep</b> - which is the real
-    /// cost, since a frame at <c>t</c> is rendered by sweeping every frame before it. 1800 is one
-    /// minute at 30 fps.</summary>
-    public int MaxFrames { get; set; } = 1800;
+    /// <summary>
+    /// Optional ceiling on the number of frames a single call may <b>sweep</b>. <b>Zero, the
+    /// default, means no limit</b> - a renderer that cannot make a long clip is not a renderer.
+    ///
+    /// <para>It was 1800 at first, on the reasoning that a runaway request fills a disk. That was
+    /// the wrong trade: a ten-minute title sequence is an ordinary thing to want, and the ceiling
+    /// refused it. The real hazards are handled where they arise instead - a PNG sequence streams
+    /// through <see cref="FrameSequenceWriter"/> in bounded memory rather than collecting the run,
+    /// and <see cref="MaxPixels"/> still bounds a single frame, which is a different question from
+    /// how many there are.</para>
+    ///
+    /// <para>Left here as an opt-in control for a shared instance, where bounding what one caller
+    /// can spend is a legitimate thing to want.</para>
+    /// </summary>
+    public int MaxFrames { get; set; }
 
     /// <summary>Ceiling on pixels per rendered frame, after <c>scale</c> is applied. 8294400 is
     /// 3840x2160.</summary>

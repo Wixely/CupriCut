@@ -77,6 +77,16 @@ public sealed class SafetyTests
     }
 
     [Fact]
+    public void Gif_builds_a_palette_from_the_frames_rather_than_flattening_to_256_colours()
+    {
+        // Measured on the revenue-card example: a flat rgb8 conversion made a 16.6 MB posterised
+        // file, and the palettegen/paletteuse graph made a 0.6 MB sharp one. Worth a guard.
+        var gif = VideoEncoder.Codecs["gif"];
+        Assert.Null(gif.PixelFormat);   // paletteuse decides it; passing one as well fights it
+        Assert.Contains(gif.ExtraArgs, a => a.Contains("palettegen") && a.Contains("paletteuse"));
+    }
+
+    [Fact]
     public void A_family_no_registered_face_covers_fails_naming_the_family()
     {
         // FontPolicy.RegisteredOnly, always. A silent substitution is the thing being prevented:

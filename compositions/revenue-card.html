@@ -1,0 +1,175 @@
+<!--
+  A staggered bar reveal: the title rises, a rule draws under it, then five bars grow one after
+  another on their own animation-delay, each with its value fading in behind it.
+
+  Everything is @keyframes, so this composition is pure in t. The staggering is the interesting
+  part: the engine's clock is absolute, so `animation-delay` is what gives each bar its own zero -
+  the same mechanism the Milestone 2 timeline layer will use to give a late element its own start.
+-->
+<div class="stage">
+  <div class="panel">
+    <div class="head">
+      <div class="eyebrow">QUARTERLY</div>
+      <div class="title">Revenue by region</div>
+      <div class="rule"></div>
+    </div>
+
+    <div class="rows">
+      <div class="row r1">
+        <div class="label">North</div>
+        <div class="track"><div class="bar b1"></div></div>
+        <div class="value v1">£4.8m</div>
+      </div>
+      <div class="row r2">
+        <div class="label">Midlands</div>
+        <div class="track"><div class="bar b2"></div></div>
+        <div class="value v2">£3.9m</div>
+      </div>
+      <div class="row r3">
+        <div class="label">South</div>
+        <div class="track"><div class="bar b3"></div></div>
+        <div class="value v3">£6.2m</div>
+      </div>
+      <div class="row r4">
+        <div class="label">Wales</div>
+        <div class="track"><div class="bar b4"></div></div>
+        <div class="value v4">£1.7m</div>
+      </div>
+      <div class="row r5">
+        <div class="label">Scotland</div>
+        <div class="track"><div class="bar b5"></div></div>
+        <div class="value v5">£2.6m</div>
+      </div>
+    </div>
+  </div>
+</div>
+
+<style>
+  .stage {
+    width: 100%;
+    height: 100%;
+    font-family: "Noto Sans";
+    background: linear-gradient(150deg, #0c1017 0%, #161d2b 60%, #1b2536 100%);
+    display: flex;
+    justify-content: center;
+  }
+
+  .panel {
+    width: 940px;
+    margin-top: 92px;
+  }
+
+  /* ---- heading ------------------------------------------------------------------------ */
+
+  .eyebrow {
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: #d9642a;
+    animation: rise 0.5s ease-out both;
+  }
+
+  .title {
+    font-size: 46px;
+    font-weight: 700;
+    color: #f4f6fb;
+    letter-spacing: -0.8px;
+    margin-top: 8px;
+    animation: rise 0.6s ease-out 0.08s both;
+  }
+
+  .rule {
+    height: 3px;
+    margin-top: 20px;
+    background: #2c3a52;
+    animation: draw 0.7s ease-out 0.25s both;
+  }
+
+  /* ---- rows --------------------------------------------------------------------------- */
+
+  .rows { margin-top: 40px; }
+
+  .row {
+    display: flex;
+    align-items: center;
+    height: 54px;
+  }
+
+  .label {
+    width: 150px;
+    font-size: 19px;
+    color: #8b98ad;
+  }
+
+  .track {
+    width: 620px;
+    height: 26px;
+    background: #1c2534;
+    border-radius: 3px;
+  }
+
+  .bar {
+    height: 26px;
+    border-radius: 3px;
+    background: linear-gradient(90deg, #d9642a 0%, #e8a04a 100%);
+  }
+
+  .value {
+    width: 120px;
+    font-size: 20px;
+    font-weight: 700;
+    color: #f4f6fb;
+    /* the values sit to the right of the track, so a left pad is the gutter */
+    padding-left: 22px;
+  }
+
+  /* Each row is one beat later than the last. This is the whole point of the piece: the same
+     two keyframes, five different delays, one absolute clock. */
+  .b1 { animation: grow1 0.8s cubic-bezier(.2,.8,.3,1) 0.55s both; }
+  .b2 { animation: grow2 0.8s cubic-bezier(.2,.8,.3,1) 0.70s both; }
+  .b3 { animation: grow3 0.8s cubic-bezier(.2,.8,.3,1) 0.85s both; }
+  .b4 { animation: grow4 0.8s cubic-bezier(.2,.8,.3,1) 1.00s both; }
+  .b5 { animation: grow5 0.8s cubic-bezier(.2,.8,.3,1) 1.15s both; }
+
+  .v1 { animation: fade 0.4s ease-out 1.15s both; }
+  .v2 { animation: fade 0.4s ease-out 1.30s both; }
+  .v3 { animation: fade 0.4s ease-out 1.45s both; }
+  .v4 { animation: fade 0.4s ease-out 1.60s both; }
+  .v5 { animation: fade 0.4s ease-out 1.75s both; }
+
+  .r1, .r2, .r3, .r4, .r5 { animation: slidein 0.5s ease-out both; }
+  .r1 { animation-delay: 0.40s; }
+  .r2 { animation-delay: 0.55s; }
+  .r3 { animation-delay: 0.70s; }
+  .r4 { animation-delay: 0.85s; }
+  .r5 { animation-delay: 1.00s; }
+
+  /* ---- keyframes ---------------------------------------------------------------------- */
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(22px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes slidein {
+    from { opacity: 0; transform: translateX(-18px); }
+    to   { opacity: 1; transform: translateX(0); }
+  }
+
+  @keyframes fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  @keyframes draw {
+    from { width: 0; }
+    to   { width: 940px; }
+  }
+
+  /* Widths are the data: 6.2m is the longest bar at the full 620px track. */
+  @keyframes grow1 { from { width: 0; } to { width: 480px; } }
+  @keyframes grow2 { from { width: 0; } to { width: 390px; } }
+  @keyframes grow3 { from { width: 0; } to { width: 620px; } }
+  @keyframes grow4 { from { width: 0; } to { width: 170px; } }
+  @keyframes grow5 { from { width: 0; } to { width: 260px; } }
+</style>

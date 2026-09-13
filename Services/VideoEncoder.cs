@@ -34,7 +34,15 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         ["h265"] = new("h265", "libx265", "yuv420p", ".mp4", Alpha: false, ["-preset", "medium", "-crf", "22", "-tag:v", "hvc1", "-movflags", "+faststart"]),
         ["vp9"] = new("vp9", "libvpx-vp9", "yuva420p", ".webm", Alpha: true, ["-b:v", "0", "-crf", "30"]),
         ["prores"] = new("prores", "prores_ks", "yuva444p10le", ".mov", Alpha: true, ["-profile:v", "4444"]),
-        ["gif"] = new("gif", "gif", "rgb8", ".gif", Alpha: false, []),
+        // GIF needs a palette built from the actual frames, not a flat 256-colour conversion. The
+        // split/palettegen/paletteuse graph is the difference between a 16 MB posterised mess and
+        // a sharp file a fraction of the size, so it is the default rather than an option. No
+        // -pix_fmt here: paletteuse decides the format, and passing one as well fights it.
+        ["gif"] = new("gif", "gif", PixelFormat: null, ".gif", Alpha: false,
+        [
+            "-filter_complex", "[0:v]split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3",
+            "-loop", "0",
+        ]),
     };
 
     /// <summary>The codec picked when the caller names none: h264 normally, and the first
@@ -198,8 +206,11 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
 
         args.Add("-c:v");
         args.Add(codec.Encoder);
-        args.Add("-pix_fmt");
-        args.Add(codec.PixelFormat);
+        if (codec.PixelFormat is { Length: > 0 } pixelFormat)
+        {
+            args.Add("-pix_fmt");
+            args.Add(pixelFormat);
+        }
         args.AddRange(codec.ExtraArgs);
         args.Add(output);
 
@@ -208,7 +219,8 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
 
     private static string Rate(double fps) => fps.ToString("0.############", System.Globalization.CultureInfo.InvariantCulture);
 
-    private static string Quote(string arg) => arg.Contains(' ') ? $"\"{arg}\"" : arg;
+    private static string Quote(string arg) =>
+        arg.AsSpan().ContainsAny(" ;[]()'") ? $"\"{arg}\"" : arg;
 
     private static string Tail(StringBuilder stderr)
     {
@@ -251,7 +263,7 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
 public sealed record VideoCodec(
     string Name,
     string Encoder,
-    string PixelFormat,
+    string? PixelFormat,
     string Extension,
     bool Alpha,
     IReadOnlyList<string> ExtraArgs);

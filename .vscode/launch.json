@@ -6,9 +6,10 @@
   // whether a window opens.
   //
   // The debug build copies compositions/, fonts/ and CupriCut.json into bin/Debug/net10.0, and the
-  // app resolves its content root from the EXECUTABLE's directory rather than the working
-  // directory - so that folder is the content root whatever cwd says. projects/ and output/ are
-  // created there on first use.
+  // app resolves its content root from its own assembly rather than the working directory - so that
+  // folder is the content root whatever cwd says. projects/ and output/ are created there on first
+  // use. (VS Code launches these through `dotnet CupriCut.dll`, so the content root must NOT come
+  // from the process path: that would be the SDK's directory. See Services/ContentRoot.cs.)
   "configurations": [
     {
       // F5 lands here: the window plus the server, which is what a person normally wants.
@@ -112,10 +113,13 @@
       // Breaking inside a pointer handler kills the drag you were trying to observe - the mouse
       // capture is gone by the time you continue. Attaching to an already-running window lets you
       // set the breakpoint after the interesting state is on screen.
+      //
+      // A picker rather than a process name: launched from VS Code the process is "dotnet", and
+      // launched from its own executable it is "CupriCut", so neither name matches both.
       "name": "Attach to a running CupriCut",
       "type": "coreclr",
       "request": "attach",
-      "processName": "CupriCut.exe",
+      "processId": "${command:pickProcess}",
       "justMyCode": false
     }
   ]

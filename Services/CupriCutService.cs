@@ -39,7 +39,7 @@ public sealed class CupriCutService
     {
         _options = options;
         _log = log;
-        ContentRoot = Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
+        ContentRoot = Services.ContentRoot.Locate();
     }
 
     public CutOptions Options => _options.CurrentValue;

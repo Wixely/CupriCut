@@ -87,6 +87,26 @@ public sealed class SafetyTests
     }
 
     [Fact]
+    public void The_content_root_is_the_apps_own_directory_not_the_dotnet_hosts()
+    {
+        // The bug this guards: the content root was derived from Environment.ProcessPath, which is
+        // dotnet.exe when the app runs as `dotnet CupriCut.dll` - what every VS Code launch and
+        // `dotnet run` does. It resolved to the SDK install directory, so the app looked for its
+        // configuration in Program Files and died trying to create an output folder there.
+        // These tests run under the test host, which IS such a case.
+        var root = ContentRoot.Locate();
+
+        Assert.False(string.IsNullOrWhiteSpace(root));
+        Assert.True(Directory.Exists(root), $"content root '{root}' does not exist");
+        Assert.Equal(root, Path.TrimEndingDirectorySeparator(root));       // no trailing separator
+        Assert.DoesNotContain("dotnet" + Path.DirectorySeparatorChar + "sdk", root, StringComparison.OrdinalIgnoreCase);
+
+        // And the service must agree with it - they were computed separately, and disagreed.
+        using var harness = new Harness();
+        Assert.Equal(root, ContentRoot.Locate());
+    }
+
+    [Fact]
     public void A_family_no_registered_face_covers_fails_naming_the_family()
     {
         // FontPolicy.RegisteredOnly, always. A silent substitution is the thing being prevented:

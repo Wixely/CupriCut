@@ -40,15 +40,28 @@ public static class Program
             McpSharpIcon.ApplyConsoleWindowIcon();
         }
 
-        Log.Logger = new LoggerConfiguration()
-            .MinimumLevel.Information()
-            .WriteTo.Console()
-            .WriteTo.File(
-                Path.Combine(contentRoot, "logs", "cupricut-bootstrap-.log"),
-                rollingInterval: RollingInterval.Day,
-                retainedFileCountLimit: 7,
-                shared: true)
-            .CreateBootstrapLogger();
+        // The bootstrap logger runs before the try below, so anything it throws is unhandled and the
+        // process dies with no output whatsoever - which is the least debuggable failure there is.
+        // A log file we cannot write is not a reason to refuse to start: say so on the console and
+        // carry on without it.
+        try
+        {
+            Log.Logger = new LoggerConfiguration()
+                .MinimumLevel.Information()
+                .WriteTo.Console()
+                .WriteTo.File(
+                    Path.Combine(contentRoot, "logs", "cupricut-bootstrap-.log"),
+                    rollingInterval: RollingInterval.Day,
+                    retainedFileCountLimit: 7,
+                    shared: true)
+                .CreateBootstrapLogger();
+        }
+        catch (Exception ex)
+        {
+            Log.Logger = new LoggerConfiguration().MinimumLevel.Information().WriteTo.Console().CreateBootstrapLogger();
+            Log.Warning("Could not open a log file under {ContentRoot}: {Reason}. Continuing with console logging only",
+                contentRoot, FirstLine(ex.Message));
+        }
 
         try
         {
@@ -279,8 +292,7 @@ public static class Program
         startupLog.Information("  Content root: {ContentRoot}", contentRoot);
     }
 
-    private static string GetContentRoot() =>
-        Path.GetDirectoryName(Environment.ProcessPath) ?? AppContext.BaseDirectory;
+    private static string GetContentRoot() => ContentRoot.Locate();
 
     private static string ResolveConfigFile(string contentRoot, string fileName)
     {

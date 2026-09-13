@@ -126,7 +126,19 @@ dotnet run --project CupriCut.csproj -- -c   # headless: MCP server only
 **Two faces, one binary.** `CupriCut` opens the studio window by default and `-c` runs headless —
 and **both host the MCP server**. The window is a second face on the same service, never a separate
 app. A Windows Service or a container implies `-c`, and a window that cannot open falls back to
-serving headlessly rather than taking the server down with it.
+serving headlessly rather than taking the server down with it. A failed port bind does not cost the
+window either: the preview and annotations still work, and the status strip says the server is
+unavailable.
+
+| flag | |
+|---|---|
+| *(none)* | studio window + MCP server |
+| `-c` / `--console` | headless: MCP server only |
+| `--software` | force the software renderer — run this before assuming a missing window is a broken app |
+| `--Server:Port=5723` | a second instance beside a running one |
+
+VS Code launch configurations for all of these are in [.vscode/launch.json](.vscode/launch.json);
+**Studio (desktop)** is the default, so F5 opens the window.
 
 The CLI has the same verbs over the same services:
 

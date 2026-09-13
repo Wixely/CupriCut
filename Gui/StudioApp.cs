@@ -33,9 +33,9 @@ public sealed class StudioApp(StudioModel model) : CupriApp
 
     public override string Title => "CupriCut Studio";
 
-    public override int Width => 1500;
+    public override int Width => 1440;
 
-    public override int Height => 900;
+    public override int Height => 860;
 
     public override SKColor Background => new(0x0F, 0x13, 0x1A);
 
@@ -49,6 +49,13 @@ public sealed class StudioApp(StudioModel model) : CupriApp
     // the belt to that braces: it costs nothing on an idle window and means the preview can never
     // sit stale because a repaint signal was missed.
     public override double RefreshIntervalSeconds => 0.2;
+
+    // Presentation is the default, PresentInfo.Responsive: lay out at the window's LOGICAL size at
+    // scale 1, so the window revealing more space reveals more content rather than bigger content.
+    // Worth stating because the logical size is NOT the pixel size on a scaled display - this window
+    // lays out at 1440x860 logical inside a 2182x1346 physical frame at 150%. A layout of fixed
+    // pixel columns would be fine here and wrong on a smaller display, which is why the one below
+    // flexes instead.
 
     public override string Html => """
         <div class="shell">
@@ -129,70 +136,69 @@ public sealed class StudioApp(StudioModel model) : CupriApp
         /* The engine has no conditional attribute, so "hidden" is how the model hides things. */
         .hidden { display:none; }
 
+        /* Fluid, not fixed. The window is laid out at its LOGICAL size, so on a 150% display a
+           1500px window is 1000 logical pixels - a layout built from hardcoded 1500px columns
+           overflows and clips its right-hand panel. The two rails keep fixed widths because a
+           sidebar should; everything between them flexes. */
         .shell { width:100%; height:100%; display:flex; flex-direction:column;
                  font-family:"Noto Sans"; background:#0f131a; color:#e8edf5; }
 
-        .bar { height:52px; display:flex; align-items:center; background:#141b26;
+        .bar { height:46px; display:flex; align-items:center; background:#141b26;
                border-bottom:1px solid #223047; }
-        .brand { width:120px; margin-left:18px; font-size:17px; font-weight:700; color:#f4f6fb; }
-        .barsub { width:900px; font-size:13px; color:#63718a; }
+        .brand { width:104px; margin-left:16px; font-size:16px; font-weight:700; color:#f4f6fb; }
+        .barsub { flex:1; font-size:12px; color:#63718a; }
 
-        .body { display:flex; height:848px; }
+        .body { flex:1; display:flex; }
 
-        .rail  { width:280px; height:848px; background:#111823; border-right:1px solid #223047;
-                 overflow:scroll; }
-        .notes { width:320px; height:848px; background:#111823; border-left:1px solid #223047;
-                 overflow:scroll; }
-        .railhead { width:280px; margin:16px 0 10px 16px; font-size:11px; font-weight:700;
+        .rail  { width:230px; background:#111823; border-right:1px solid #223047; overflow:scroll; }
+        .notes { width:270px; background:#111823; border-left:1px solid #223047; overflow:scroll; }
+        .railhead { margin:14px 0 8px 14px; font-size:11px; font-weight:700;
                     letter-spacing:2px; color:#5a6a85; }
 
-        .prow { width:248px; margin:0 0 4px 12px; padding:10px 12px; border-radius:6px;
-                background:#151d2a; }
+        .prow { margin:0 10px 4px 10px; padding:9px 11px; border-radius:6px; background:#151d2a; }
         .prow.on { background:#1d2a3f; border:1px solid #2f4463; }
-        .pname   { width:220px; font-size:14px; font-weight:700; color:#e8edf5; }
-        .pdetail { width:220px; font-size:12px; color:#63718a; margin-top:3px; }
-        .pbadge  { width:220px; font-size:11px; font-weight:700; color:#d9642a; margin-top:4px; }
+        .pname   { font-size:13px; font-weight:700; color:#e8edf5; }
+        .pdetail { font-size:11px; color:#63718a; margin-top:3px; }
+        .pbadge  { font-size:11px; font-weight:700; color:#d9642a; margin-top:4px; }
 
-        .main { width:900px; height:848px; }
-        .maintop { width:860px; margin:16px 0 0 20px; display:flex; align-items:center; }
-        .ptitle { width:700px; font-size:19px; font-weight:700; color:#f4f6fb; }
-        .psize  { width:140px; font-size:12px; color:#63718a; }
+        .main { flex:1; display:flex; flex-direction:column; }
+        .maintop { display:flex; align-items:center; margin:14px 18px 0 18px; }
+        .ptitle { flex:1; font-size:17px; font-weight:700; color:#f4f6fb; }
+        .psize  { width:110px; font-size:11px; color:#63718a; }
 
-        /* The frame box is a fixed 16:9 the surface fills, so normalising a drag against it is
-           arithmetic rather than guesswork. */
-        .stagewrap { width:860px; height:484px; margin:14px 0 0 20px; background:#0a0d13;
+        /* The preview takes whatever vertical space is left; the surface fills it. */
+        .stagewrap { flex:1; margin:12px 18px 0 18px; background:#0a0d13;
                      border:1px solid #223047; border-radius:6px; }
-        .stage { width:858px; height:482px; }
-        .placeholder { width:858px; margin-top:-260px; font-size:14px; color:#3f4c63; }
-        .spinner { width:858px; margin-top:-20px; font-size:12px; color:#d9642a; }
+        .stage { width:100%; height:100%; }
+        .placeholder { margin:-260px 0 0 18px; font-size:13px; color:#3f4c63; }
+        .spinner { margin:-18px 0 0 18px; font-size:11px; color:#d9642a; }
 
-        .scrub { width:860px; margin:16px 0 0 20px; display:flex; align-items:center; }
-        .tlabel { width:70px; font-size:13px; font-weight:700; color:#8b98ad; }
-        .tlabel.right { color:#5a6a85; }
-        .cupri-slider { width:700px; }
+        .scrub { display:flex; align-items:center; margin:12px 18px 0 18px; }
+        .tlabel { width:58px; font-size:12px; font-weight:700; color:#8b98ad; }
+        .tlabel.right { width:52px; color:#5a6a85; }
+        .cupri-slider { flex:1; }
 
-        .tools { width:860px; margin:14px 0 0 20px; display:flex; align-items:center; }
-        .tools .cupri-button { margin-right:10px; }
-        .tools .cupri-textfield { width:420px; }
+        .tools { display:flex; align-items:center; margin:10px 18px 0 18px; }
+        .tools .cupri-button { margin-right:8px; }
+        .tools .cupri-textfield { flex:1; }
         .armed { background:#d9642a; }
 
-        .status { width:860px; margin:14px 0 0 20px; font-size:12px; color:#63718a; }
+        .status { margin:10px 18px 12px 18px; font-size:11px; color:#63718a; }
 
-        .nrow { width:288px; margin:0 0 8px 16px; padding:10px 12px; background:#151d2a;
-                border-radius:6px; }
+        .nrow { margin:0 10px 8px 10px; padding:9px 11px; background:#151d2a; border-radius:6px; }
         .nrow.done { background:#121a25; }
-        .ntop { width:264px; display:flex; align-items:center; }
-        .nat  { width:180px; font-size:12px; font-weight:700; color:#d9642a; }
-        .nstatus { width:80px; font-size:11px; color:#5a6a85; }
-        .ntext   { width:264px; font-size:13px; color:#e8edf5; margin-top:5px; }
-        .nregion { width:264px; font-size:11px; color:#5a6a85; margin-top:4px; }
-        .nactions { width:264px; margin-top:8px; display:flex; }
+        .ntop { display:flex; align-items:center; }
+        .nat  { flex:1; font-size:11px; font-weight:700; color:#d9642a; }
+        .nstatus { width:62px; font-size:11px; color:#5a6a85; }
+        .ntext   { font-size:12px; color:#e8edf5; margin-top:5px; }
+        .nregion { font-size:11px; color:#5a6a85; margin-top:4px; }
+        .nactions { margin-top:8px; display:flex; }
         .nactions .cupri-button { margin-right:6px; }
 
-        .empty { width:250px; margin:10px 0 0 16px; font-size:12px; color:#3f4c63; }
+        .empty { margin:8px 14px 0 14px; font-size:12px; color:#3f4c63; }
 
         .cupri-button { background:#223047; color:#e8edf5; border-radius:5px;
-                        padding:7px 12px; font-size:12px; }
+                        padding:6px 11px; font-size:12px; }
         """;
 
     /// <summary>Fonts come from the same directories the renderer registers, so the window's text

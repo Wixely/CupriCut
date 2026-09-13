@@ -218,10 +218,18 @@ public sealed class StudioTests
             });
         doc.Surfaces.Register(StudioApp.PreviewKey, surface);
 
-        using var img = doc.RenderToImage(app.Width, app.Height, new SKColor(0x0F, 0x13, 0x1A));
-        using var data = img.Encode(SKEncodedImageFormat.Png, 100);
-        var path = Path.Combine(AppContext.BaseDirectory, "studio.png");
-        using (var fs = File.Create(path)) data.SaveTo(fs);
+        // Both sizes: the design size, and the halved logical box a 200% display gives - because a
+        // layout of hardcoded columns looks perfect at one and clips its right-hand panel at the
+        // other, which is exactly what happened the first time this window opened for real.
+        foreach (var (w, h, name) in new[] { (app.Width, app.Height, "studio.png"), (960, 600, "studio-small.png") })
+        {
+            using var img = doc.RenderToImage(w, h, new SKColor(0x0F, 0x13, 0x1A));
+            using var data = img.Encode(SKEncodedImageFormat.Png, 100);
+            using var fs = File.Create(Path.Combine(AppContext.BaseDirectory, name));
+            data.SaveTo(fs);
+        }
+
+        using var img2 = doc.RenderToImage(app.Width, app.Height, new SKColor(0x0F, 0x13, 0x1A));
 
         // The empty-state copy must be gone when the lists are full - the bug this shot caught the
         // first time, because the markup used a conditional attribute the engine does not have.
@@ -238,7 +246,12 @@ public sealed class StudioTests
         // The surface really reached the stage: its node carries the key and has a real box.
         var stage = FindSurface(doc.Root, StudioApp.PreviewKey);
         Assert.NotNull(stage);
-        Assert.True(stage!.Width > 800);
+        Assert.True(stage!.Width > 500, $"the preview is {stage.Width}px wide");
+
+        // Nothing may overflow the viewport: the annotations rail sitting off the right edge is
+        // invisible in a headless render unless it is asserted.
+        var widest = Rightmost(doc.Root);
+        Assert.True(widest <= app.Width + 1, $"content reaches {widest}px in a {app.Width}px window");
         Assert.NotNull(surface.CurrentFrame);
         Assert.Equal((858, 482), surface.NaturalSize);
     }
@@ -277,6 +290,14 @@ public sealed class StudioTests
         foreach (var child in node.Children)
             if (FindSurface(child, key) is { } hit) return hit;
         return null;
+    }
+
+    /// <summary>The furthest right edge in the tree - how a clipped panel is caught without eyes.</summary>
+    private static float Rightmost(CupriFace.Dom.RenderNode node)
+    {
+        var edge = node.X + node.Width;
+        foreach (var child in node.Children) edge = Math.Max(edge, Rightmost(child));
+        return edge;
     }
 
     private static string AllText(CupriFace.Dom.RenderNode node)

@@ -1,18 +1,81 @@
 {
   "version": "0.2.0",
+
+  // CupriCut is one binary with two faces: the studio window (default) and the headless MCP
+  // server (-c). Both host the server, so the only thing these configurations really choose is
+  // whether a window opens.
+  //
+  // The debug build copies compositions/, fonts/ and CupriCut.json into bin/Debug/net10.0, and the
+  // app resolves its content root from the EXECUTABLE's directory rather than the working
+  // directory - so that folder is the content root whatever cwd says. projects/ and output/ are
+  // created there on first use.
   "configurations": [
     {
-      "name": "CupriCut (MCP server)",
+      // F5 lands here: the window plus the server, which is what a person normally wants.
+      "name": "Studio (desktop)",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
       "program": "${workspaceFolder}/bin/Debug/net10.0/CupriCut.dll",
       "cwd": "${workspaceFolder}/bin/Debug/net10.0",
       "console": "integratedTerminal",
-      "stopAtEntry": false
+      "stopAtEntry": false,
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      // The window's input and the render worker both run through CupriFace, so stepping into the
+      // engine is usually what you want when a drag or a repaint misbehaves.
+      "justMyCode": false
     },
     {
-      "name": "cupricut contact_sheet (example)",
+      // When the window does not appear, run this before assuming the app is broken: it forces the
+      // software renderer, so a GL or driver problem shows up as "this one works and that one does
+      // not" rather than as silence.
+      "name": "Studio (desktop, software renderer)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/bin/Debug/net10.0/CupriCut.dll",
+      "args": [ "--software" ],
+      "cwd": "${workspaceFolder}/bin/Debug/net10.0",
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development"
+      },
+      "justMyCode": false
+    },
+    {
+      // The window on a second port, so it can run beside an already-running instance. Without
+      // this the second copy opens its window and reports the server as unavailable, which is
+      // correct but not what you want while debugging the server half.
+      "name": "Studio (desktop, port 5723)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/bin/Debug/net10.0/CupriCut.dll",
+      "args": [ "--Server:Port=5723" ],
+      "cwd": "${workspaceFolder}/bin/Debug/net10.0",
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "justMyCode": false
+    },
+    {
+      "name": "Server only (-c, headless)",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/bin/Debug/net10.0/CupriCut.dll",
+      "args": [ "-c" ],
+      "cwd": "${workspaceFolder}/bin/Debug/net10.0",
+      "console": "integratedTerminal",
+      "stopAtEntry": false,
+      "env": {
+        "DOTNET_ENVIRONMENT": "Development"
+      }
+    },
+    {
+      "name": "CLI: contact sheet",
       "type": "coreclr",
       "request": "launch",
       "preLaunchTask": "build",
@@ -27,6 +90,33 @@
       "cwd": "${workspaceFolder}",
       "console": "integratedTerminal",
       "stopAtEntry": false
+    },
+    {
+      "name": "CLI: 120 fps timebase video",
+      "type": "coreclr",
+      "request": "launch",
+      "preLaunchTask": "build",
+      "program": "${workspaceFolder}/cli/bin/Debug/net10.0/CupriCut.Cli.dll",
+      "args": [
+        "video",
+        "--composition", "timebase.html",
+        "--duration", "10",
+        "--fps", "120",
+        "--content-root", "${workspaceFolder}/bin/Debug/net10.0"
+      ],
+      "cwd": "${workspaceFolder}",
+      "console": "integratedTerminal",
+      "stopAtEntry": false
+    },
+    {
+      // Breaking inside a pointer handler kills the drag you were trying to observe - the mouse
+      // capture is gone by the time you continue. Attaching to an already-running window lets you
+      // set the breakpoint after the interesting state is on screen.
+      "name": "Attach to a running CupriCut",
+      "type": "coreclr",
+      "request": "attach",
+      "processName": "CupriCut.exe",
+      "justMyCode": false
     }
   ]
 }

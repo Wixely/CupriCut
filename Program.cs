@@ -30,6 +30,11 @@ public static class Program
             || args.Any(a => a is "-c" or "--console" or "--no-gui")
             || string.Equals(Environment.GetEnvironmentVariable("DOTNET_RUNNING_IN_CONTAINER"), "true", StringComparison.OrdinalIgnoreCase);
 
+        // Force the software window. GL is the likeliest thing to fail on a remote desktop, a VM or
+        // a headless-ish session, and "it fell back to console" hides whether the window itself is
+        // at fault - this separates the two while debugging.
+        var software = args.Any(a => a is "--software" or "--soft-render");
+
         if (!isService)
         {
             McpSharpIcon.ApplyConsoleWindowIcon();
@@ -63,7 +68,7 @@ public static class Program
                 .AddJsonFile(ResolveConfigFile(contentRoot, "CupriCut.Local.json"), optional: true, reloadOnChange: true)
                 .AddEnvironmentVariables()
                 .AddEnvironmentVariables(prefix: "CUPRICUT_")
-                .AddCommandLine([.. args.Where(a => a is not ("-c" or "--console" or "--no-gui"))]);
+                .AddCommandLine([.. args.Where(a => a is not ("-c" or "--console" or "--no-gui" or "--software" or "--soft-render"))]);
 
             if (isService)
             {
@@ -132,7 +137,7 @@ public static class Program
                 $"Output: {cut.OutputRoot}",
                 $"Video: {(cut.Options.EnableVideo ? cut.Options.FfmpegPath : "disabled")}",
                 $"Frames: {(cut.Options.MaxFrames > 0 ? cut.Options.MaxFrames.ToString("N0") + " max" : "no limit")}, {cut.Options.MaxPixels:N0} pixels/frame",
-                $"Face: {(console ? "console (-c)" : "studio window + server")}");
+                $"Face: {(console ? "console (-c)" : software ? "studio window (software) + server" : "studio window + server")}");
 
             app.UseMiddleware<McpPasswordMiddleware>();
 
@@ -153,7 +158,7 @@ public static class Program
                 return 0;
             }
 
-            return RunWithWindow(app, contentRoot);
+            return RunWithWindow(app, software);
         }
         catch (Exception ex)
         {
@@ -177,19 +182,36 @@ public static class Program
     /// running headless with a message, rather than taking the server down with it. Someone who
     /// launched this to serve an agent still gets a served agent.</para>
     /// </summary>
-    private static int RunWithWindow(WebApplication app, string contentRoot)
+    private static int RunWithWindow(WebApplication app, bool preferSoftware)
     {
-        app.StartAsync().GetAwaiter().GetResult();
+        var model = app.Services.GetRequiredService<StudioModel>();
+
+        // A failed bind must not cost the window. The commonest cause is a second copy already
+        // holding the port, and killing a desktop app with a stack trace over that is poor: the
+        // preview and the annotations still work, so open, say the server is unavailable, and let
+        // the reviewer carry on.
+        var served = false;
+        try
+        {
+            app.StartAsync().GetAwaiter().GetResult();
+            served = true;
+        }
+        catch (Exception ex)
+        {
+            Log.Error(ex, "The MCP server could not start; the studio window will open without it");
+            model.Status = $"MCP server unavailable: {FirstLine(ex.Message)} — the preview and annotations still work.";
+        }
 
         var controller = app.Services.GetRequiredService<StudioController>();
-        var studio = new StudioApp(app.Services.GetRequiredService<StudioModel>())
+        var studio = new StudioApp(model)
         {
             FontSources = [.. StudioFonts(app.Services.GetRequiredService<CupriCutService>())],
         };
 
         try
         {
-            CupriFace.Shell.DesktopHost.Run(studio, document =>
+            Log.Information("Opening the studio window ({Renderer})", preferSoftware ? "software" : "GPU with software fallback");
+            CupriFace.Shell.DesktopHost.Run(studio, preferSoftware, document =>
             {
                 controller.Attach(document);
                 // The scrub bar writes straight to the model, so there is no change event to hook;
@@ -200,7 +222,13 @@ public static class Program
         }
         catch (Exception ex)
         {
-            Log.Warning(ex, "The studio window could not open; continuing headless. Use -c to skip the window entirely");
+            if (!served)
+            {
+                Log.Fatal(ex, "Neither the MCP server nor the studio window could start");
+                return 1;
+            }
+
+            Log.Warning(ex, "The studio window could not open; continuing headless. Use -c to skip the window entirely, or --software to force the software renderer");
             Log.Information("CupriCut is serving MCP headlessly. Press Ctrl+C to stop");
             app.WaitForShutdown();
             return 0;
@@ -211,8 +239,15 @@ public static class Program
         }
 
         Log.Information("Studio window closed; stopping the server");
-        app.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
-        return 0;
+        if (served) app.StopAsync(TimeSpan.FromSeconds(5)).GetAwaiter().GetResult();
+        return served ? 0 : 2;
+    }
+
+    /// <summary>An exception message's first line — the useful half, for a one-line status strip.</summary>
+    private static string FirstLine(string message)
+    {
+        var end = message.IndexOfAny(['\r', '\n']);
+        return end < 0 ? message : message[..end];
     }
 
     /// <summary>The faces the renderer registers, so the window's own text and a rendered frame's

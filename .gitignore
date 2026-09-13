@@ -1,0 +1,45 @@
+# Build output
+bin/
+obj/
+out/
+publish/
+artifacts/
+*.binlog
+
+# Logs
+logs/
+*.log
+
+# Local secrets / overrides
+appsettings.Development.json
+appsettings.Local.json
+appsettings.*.Local.json
+CupriCut.Local.json
+CupriCut.*.Local.json
+secrets.json
+.env
+.env.*
+
+# Rendered output. A renderer writes files for a living, and none of them belong in git —
+# Cut:OutputRoot points somewhere under here by default.
+output/
+frames/
+*.mp4
+*.webm
+*.mov
+*.apng
+
+# …but a composition's own assets do belong, so a PNG under compositions/ is committed on purpose.
+!compositions/**/*.png
+
+# Fonts are licensed separately and are a deliberate decision every time, never an accident.
+*.ttf
+*.otf
+*.ttc
+*.woff
+*.woff2
+
+# Editors
+.vs/
+.idea/
+*.user

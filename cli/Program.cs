@@ -107,9 +107,10 @@ public static class Program
         var loaded = cut.LoadComposition(opts.Require("composition"));
         var fps = opts.Number("fps", loaded.Defaults?.Fps ?? cut.Options.DefaultFps);
         var from = opts.Number("from", 0);
-        var times = opts.Has("to")
-            ? Range(from, opts.Number("to", 1), fps)
-            : Clip(from, opts.Number("duration", loaded.Defaults?.Duration ?? 1), fps);
+        double[] times;
+        ClipPlan? plan = null;
+        if (opts.Has("to")) times = Range(from, opts.Number("to", 1), fps);
+        else (times, plan) = ClipPlanner.Plan(from, opts.Number("duration", loaded.Defaults?.Duration ?? 1), fps);
         var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
 
         var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
@@ -121,6 +122,7 @@ public static class Program
 
         var written = writer.Complete();
         Console.WriteLine($"{directory}  ({written.Length} PNGs)");
+        ReportTiming(plan);
         Report(report);
         return 0;
     }
@@ -139,16 +141,18 @@ public static class Program
         if (opts.Has("duration") && opts.Has("to"))
             throw new ArgumentException("Give either --duration or --to, not both - they differ by one frame.");
 
-        var times = opts.Has("to")
-            ? Range(from, opts.Number("to", 3), fps)
-            : Clip(from, opts.Number("duration", defaults?.Duration ?? 3), fps);
+        double[] times;
+        ClipPlan? plan = null;
+        if (opts.Has("to")) times = Range(from, opts.Number("to", 3), fps);
+        else (times, plan) = ClipPlanner.Plan(from, opts.Number("duration", defaults?.Duration ?? 3), fps);
         var codec = VideoEncoder.Resolve(opts.Text("codec") ?? defaults?.Codec, alpha);
         var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
         var path = cut.ResolveWrite(stem + codec.Extension);
 
         var (video, report) = encoder.Encode(loaded, Spec(opts, times, fps), path, codec, fps);
 
-        Console.WriteLine($"{video.Path}  ({video.Bytes:N0} bytes, {video.Frames} frames, {video.Seconds:0.###}s, {codec.Name})");
+        Console.WriteLine($"{video.Path}  ({video.Bytes:N0} bytes, {video.Frames} frames, {video.Seconds:0.######}s, {codec.Name})");
+        ReportTiming(plan);
         Report(report);
         return 0;
     }
@@ -250,6 +254,20 @@ public static class Program
         Alpha = opts.Has("alpha") ? true : null,
     };
 
+    /// <summary>Always say what the requested length actually became. Silence when it was exact,
+    /// the arithmetic and a suggestion when it was not.</summary>
+    private static void ReportTiming(ClipPlan? plan)
+    {
+        if (plan is null) return;
+        if (plan.Exact)
+        {
+            Console.WriteLine($"duration {plan.ActualSeconds:0.######}s exactly ({plan.Frames} frames at {plan.Fps:0.####} fps)");
+            return;
+        }
+        Console.WriteLine($"duration {plan.ActualSeconds:0.######}s, asked for {plan.RequestedSeconds:0.######}s ({plan.DeltaMs:+0.###;-0.###;0}ms)");
+        if (plan.Note is { Length: > 0 }) Console.WriteLine($"  {plan.Note}");
+    }
+
     private static void Report(SweepReport report)
     {
         Console.WriteLine(
@@ -266,14 +284,6 @@ public static class Program
         return CutProject.IsProjectPath(file)
             ? file[..^CutProject.Extension.Length]
             : Path.GetFileNameWithoutExtension(file);
-    }
-
-    /// <summary>A clip of exactly `duration` seconds: duration x fps frames covering [from, from+duration).
-    /// The inclusive counterpart is <see cref="Range"/>, which is one frame longer.</summary>
-    private static double[] Clip(double from, double duration, double fps)
-    {
-        var count = (int)Math.Round(duration * fps, MidpointRounding.AwayFromZero);
-        return [.. Enumerable.Range(0, count).Select(i => Math.Round(from + i / fps, 6, MidpointRounding.AwayFromZero))];
     }
 
     private static double[] Range(double from, double to, double fps)

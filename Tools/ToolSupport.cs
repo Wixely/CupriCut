@@ -24,26 +24,11 @@ internal static class JsonOpts
 /// says about what it cost.</summary>
 internal static class ToolSupport
 {
-    /// <summary>
-    /// The frames of a clip that lasts exactly <paramref name="duration"/> seconds.
-    ///
-    /// <para><b>Exclusive of the end, and that is the whole point.</b> A 10 second clip at 120 fps
-    /// is 1200 frames covering [0, 10) - the last one is shown at 9.99167s and holds until 10.
-    /// Including the frame at t=10 as well would make 1201 frames and a 10.008s file, which is the
-    /// off-by-one that makes a renderer useless for cutting to music or to a spec. <see cref="Range"/>
-    /// is the inclusive sampling counterpart, for when a caller names an endpoint rather than a
-    /// length.</para>
-    /// </summary>
-    public static double[] Clip(double from, double duration, double fps)
-    {
-        if (fps <= 0) throw new ArgumentException("fps must be greater than zero.", nameof(fps));
-        if (duration <= 0) throw new ArgumentException("duration must be greater than zero.", nameof(duration));
-
-        // Rounded, not truncated: 10 * 120 is 1199.9999999999998 in binary, and a clip one frame
-        // short of what was asked for is exactly the bug this method exists to prevent.
-        var count = (int)Math.Round(duration * fps, MidpointRounding.AwayFromZero);
-        return [.. Enumerable.Range(0, count).Select(i => Math.Round(from + i / fps, 6, MidpointRounding.AwayFromZero))];
-    }
+    /// <summary>The frames of a clip of <paramref name="duration"/> seconds, snapped to the
+    /// nearest whole frame. See <see cref="ClipPlanner"/> for the full story, including what the
+    /// length actually came to - which the tools report, always.</summary>
+    public static double[] Clip(double from, double duration, double fps) =>
+        ClipPlanner.Plan(from, duration, fps).Times;
 
     /// <summary>The times an inclusive range asks for - <paramref name="to"/> is kept. The sweep
     /// still starts at zero whatever <paramref name="from"/> says - that is what makes the kept

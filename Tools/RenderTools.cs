@@ -181,9 +181,10 @@ public static class RenderTools
         var rate = fps > 0 ? fps : loaded.Defaults?.Fps > 0 ? loaded.Defaults.Fps : cut.Options.DefaultFps;
         // An explicit `to` is an inclusive endpoint; a project's duration is a length, so it yields
         // exactly duration x fps files - the same count render_video would produce.
-        var times = to > 0
-            ? ToolSupport.Range(from, to, rate)
-            : ToolSupport.Clip(from, loaded.Defaults?.Duration ?? 1, rate);
+        double[] times;
+        ClipPlan? plan = null;
+        if (to > 0) times = ToolSupport.Range(from, to, rate);
+        else (times, plan) = ClipPlanner.Plan(from, loaded.Defaults?.Duration ?? 1, rate);
         var stem = ToolSupport.SafeStem(outputDirectory ?? composition, "frames");
         var directory = cut.ResolveWrite(Path.Combine(stem, ".keep"));
         directory = Path.GetDirectoryName(directory)!;
@@ -214,8 +215,9 @@ public static class RenderTools
             fps = rate,
             from,
             to = times[^1],
-            seconds = Math.Round(times.Length / rate, 4),
+            seconds = Math.Round(times.Length / rate, 6),
             frames = written.Length,
+            timing = Timing(plan),
             // A ten-minute sequence is tens of thousands of names; listing them all would bury the
             // answer. Past a readable handful, say where they are and what they are called.
             files = written.Length <= 40 ? written.Select(Path.GetFileName) : null,
@@ -265,7 +267,10 @@ public static class RenderTools
             throw new ArgumentException("Give either duration or to, not both - a length and an inclusive endpoint differ by one frame.", nameof(duration));
 
         var span = duration > 0 ? duration : to > 0 ? 0 : defaults?.Duration ?? 3;
-        var times = span > 0 ? ToolSupport.Clip(from, span, rate) : ToolSupport.Range(from, to, rate);
+        double[] times;
+        ClipPlan? plan = null;
+        if (span > 0) (times, plan) = ClipPlanner.Plan(from, span, rate);
+        else times = ToolSupport.Range(from, to, rate);
         var picked = VideoEncoder.Resolve(codec ?? defaults?.Codec, transparent);
         var stem = ToolSupport.SafeStem(output ?? composition, "render");
         var path = cut.ResolveWrite(stem + picked.Extension);
@@ -291,13 +296,29 @@ public static class RenderTools
             video = video.Path,
             bytes = video.Bytes,
             frames = video.Frames,
-            seconds = Math.Round(video.Seconds, 3),
+            seconds = Math.Round(video.Seconds, 6),
             fps = video.Fps,
             codec = $"{picked.Name} ({picked.Encoder}, {picked.PixelFormat})",
             alpha = video.Alpha,
+            timing = Timing(plan),
             cost = ToolSupport.Cost(report),
         }, JsonOpts.Default);
     }
+
+    /// <summary>What a requested length actually became. Reported whenever a length was asked for,
+    /// and carrying a note whenever it could not be honoured exactly - a clip is whole frames, so a
+    /// request that is not a whole number of them has to move, and moving silently is how someone
+    /// finds out much later that their 10s cut is 10.010s.</summary>
+    private static object? Timing(ClipPlan? plan) => plan is null ? null : new
+    {
+        requestedSeconds = plan.RequestedSeconds,
+        actualSeconds = Math.Round(plan.ActualSeconds, 6),
+        plan.Frames,
+        plan.Fps,
+        plan.Exact,
+        plan.DeltaMs,
+        plan.Note,
+    };
 
     /// <summary>An image and a line of prose about it - and, for a picture too big to be worth an
     /// agent's context, the path it was written to instead.</summary>

@@ -167,6 +167,25 @@ endpoint** and keeps the frame at `t=to`, which is one frame more — right for 
 clip length, and the reason a renderer that conflates them quietly overruns. A project's `duration`
 is a length. Naming both is refused rather than resolved.
 
+### A length that isn't a whole number of frames always says so
+
+A clip is frames, so its length is quantised to `1/fps`. Ten seconds at 120 fps lands exactly;
+ten seconds at 29.97 fps is 299.7 frames, and there is no such thing. CupriCut takes the **nearest
+whole frame** and **always reports the difference** — absorbing it silently is how someone finds
+out much later that their ten-second cut is 10.010s.
+
+```
+$ cupricut video --composition timebase.html --duration 10 --fps 29.97
+output/timebase.mp4  (252,554 bytes, 300 frames, 10.01001s, h264)
+duration 10.01001s, asked for 10s (+10.01ms)
+  10s at 29.97 fps is 299.7 frames, not a whole number. Snapped to the nearest whole
+  frame (300), so the clip is 10.01s (+10.01ms). For exactly 10s, use 30 fps (300 frames).
+```
+
+The MCP tools carry the same thing as a `timing` object (`requestedSeconds`, `actualSeconds`,
+`frames`, `exact`, `deltaMs`, `note`). When the request lands exactly, `exact` is true and there is
+no note.
+
 ## Licence
 
 MIT, matching CupriFace. The two Noto Sans faces in `fonts/` are SIL OFL 1.1 — see `fonts/OFL.txt`.

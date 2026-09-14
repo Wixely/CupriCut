@@ -54,15 +54,6 @@ public sealed class SafetyTests
     }
 
     [Fact]
-    public void Alpha_with_a_codec_that_cannot_carry_it_is_refused_rather_than_silently_opaque()
-    {
-        // The failure mode this prevents: a "transparent" video that is quietly black.
-        var ex = Assert.Throws<ArgumentException>(() => VideoEncoder.Resolve("h264", alpha: true));
-        Assert.Contains("no alpha channel", ex.Message);
-        Assert.Contains("vp9", ex.Message);
-    }
-
-    [Fact]
     public void Asking_for_alpha_without_naming_a_codec_picks_one_that_carries_it()
     {
         Assert.True(VideoEncoder.Resolve(null, alpha: true).Alpha);

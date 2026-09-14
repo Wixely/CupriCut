@@ -249,7 +249,8 @@ public static class RenderTools
         [Description("Layout viewport height in CSS pixels.")] int height = 0,
         [Description("Pixel multiplier, like a HiDPI display. Defaults to a project's own scale, or 1.")] int scale = 0,
         [Description("h264, h265, vp9, prores or gif. Default h264, or vp9 when alpha is set.")] string? codec = null,
-        [Description("Transparent background, and a codec that can carry it.")] bool? alpha = null,
+        [Description("Transparent background.")] bool? alpha = null,
+        [Description("How transparency is carried: 'embedded' (a real alpha channel - needs vp9 or prores), 'matteBelow' (colour on top, alpha greyscale below, doubles the height) or 'matteRight' (side by side). A matte works with ANY codec including h264, which has no alpha channel of its own.")] string? alphaMode = null,
         [Description("Background colour when alpha is false, e.g. '#101014'. Default white.")] string? background = null,
         [Description("File name under the output root. The codec's own extension is used if none is given.")] string? output = null)
     {
@@ -271,7 +272,8 @@ public static class RenderTools
         ClipPlan? plan = null;
         if (span > 0) (times, plan) = ClipPlanner.Plan(from, span, rate);
         else times = ToolSupport.Range(from, to, rate);
-        var picked = VideoEncoder.Resolve(codec ?? defaults?.Codec, transparent);
+        var mode = ParseAlphaMode(alphaMode);
+        var picked = VideoEncoder.Resolve(codec ?? defaults?.Codec, transparent, mode);
         var stem = ToolSupport.SafeStem(output ?? composition, "render");
         var path = cut.ResolveWrite(stem + picked.Extension);
 
@@ -288,7 +290,7 @@ public static class RenderTools
                 Background = ToolSupport.ParseColor(background),
                 Alpha = alpha,
             },
-            path, picked, rate);
+            path, picked, rate, mode);
 
         return JsonSerializer.Serialize(new
         {
@@ -298,11 +300,30 @@ public static class RenderTools
             frames = video.Frames,
             seconds = Math.Round(video.Seconds, 6),
             fps = video.Fps,
-            codec = $"{picked.Name} ({picked.Encoder}, {picked.PixelFormat})",
+            codec = $"{picked.Name} ({picked.Encoder})",
             alpha = video.Alpha,
+            alphaMode = video.Alpha ? video.AlphaMode.ToString() : null,
+            pixelFormat = video.PixelFormat,
+            note = video.Note,
             timing = Timing(plan),
             cost = ToolSupport.Cost(report),
         }, JsonOpts.Default);
+    }
+
+    /// <summary>The alpha mode a caller named. Spelled forgivingly, because "matte-below" and
+    /// "matteBelow" are the same request.</summary>
+    private static AlphaMode ParseAlphaMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return AlphaMode.Embedded;
+        var cleaned = value.Replace("-", "").Replace("_", "").Replace(" ", "").Trim();
+        return cleaned.ToLowerInvariant() switch
+        {
+            "embedded" or "channel" or "alpha" => AlphaMode.Embedded,
+            "mattebelow" or "matte" or "vstack" or "stacked" or "below" => AlphaMode.MatteBelow,
+            "matteright" or "hstack" or "sidebyside" or "right" => AlphaMode.MatteRight,
+            _ => throw new ArgumentException(
+                $"Unknown alphaMode '{value}'. Use embedded, matteBelow or matteRight.", nameof(value)),
+        };
     }
 
     /// <summary>What a requested length actually became. Reported whenever a length was asked for,

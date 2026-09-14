@@ -6,11 +6,44 @@ using SkiaSharp;
 
 namespace CupriCut.Services;
 
+/// <summary>
+/// How transparency reaches the file.
+///
+/// <para>Only some codecs have an alpha channel at all. H.264 has none — not in Baseline, Main or
+/// High, and no amount of pixel-format argument invents one. The industry answer, and the one every
+/// web player uses when it has to support Safari, is to carry the alpha as a second image in the
+/// same opaque frame and multiply it back at playback.</para>
+/// </summary>
+public enum AlphaMode
+{
+    /// <summary>A real alpha channel in the codec. Needs a codec that has one.</summary>
+    Embedded,
+
+    /// <summary>Colour on top, alpha as greyscale underneath, in one opaque frame of twice the
+    /// height. Works with any codec, H.264 included.</summary>
+    MatteBelow,
+
+    /// <summary>Colour on the left, alpha as greyscale on the right, in one opaque frame of twice
+    /// the width.</summary>
+    MatteRight,
+}
+
 /// <summary>What ffmpeg is on this machine, if anything.</summary>
 public sealed record FfmpegInfo(bool Available, string Path, string? Version, IReadOnlyList<string> Encoders, string? Error);
 
 /// <summary>The result of an encode.</summary>
-public sealed record VideoResult(string Path, long Bytes, int Frames, double Fps, double Seconds, string Codec, bool Alpha);
+public sealed record VideoResult(string Path, long Bytes, int Frames, double Fps, double Seconds, string Codec, bool Alpha)
+{
+    /// <summary>How transparency was carried, when it was asked for.</summary>
+    public AlphaMode AlphaMode { get; init; }
+
+    /// <summary>The pixel format the finished file actually has - checked rather than assumed.</summary>
+    public string? PixelFormat { get; init; }
+
+    /// <summary>How to use a matte, for a caller who now has a double-height video and needs to
+    /// know why.</summary>
+    public string? Note { get; init; }
+}
 
 /// <summary>
 /// Raw RGBA on ffmpeg's stdin.
@@ -49,15 +82,23 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
     /// alpha-capable one when the caller asked for alpha.</summary>
     public static VideoCodec Default(bool alpha) => alpha ? Codecs["vp9"] : Codecs["h264"];
 
-    public static VideoCodec Resolve(string? name, bool alpha)
+    public static VideoCodec Resolve(string? name, bool alpha) => Resolve(name, alpha, AlphaMode.Embedded);
+
+    public static VideoCodec Resolve(string? name, bool alpha, AlphaMode mode)
     {
-        if (string.IsNullOrWhiteSpace(name)) return Default(alpha);
+        if (string.IsNullOrWhiteSpace(name)) return Default(alpha && mode == AlphaMode.Embedded);
         if (!Codecs.TryGetValue(name, out var codec))
             throw new ArgumentException($"Unknown codec '{name}'. Known codecs: {string.Join(", ", Codecs.Keys)}.", nameof(name));
-        if (alpha && !codec.Alpha)
+
+        // A matte needs no alpha channel - that is the whole point of it - so only the embedded
+        // mode cares what the codec can carry.
+        if (alpha && mode == AlphaMode.Embedded && !codec.Alpha)
             throw new ArgumentException(
-                $"Codec '{codec.Name}' carries no alpha channel, so alpha:true would produce an opaque video rather than a transparent one. " +
-                $"Use {string.Join(" or ", Codecs.Values.Where(c => c.Alpha).Select(c => c.Name))}.", nameof(name));
+                $"Codec '{codec.Name}' has no alpha channel, so an embedded-alpha render would be opaque. " +
+                $"Either use {string.Join(" or ", Codecs.Values.Where(c => c.Alpha).Select(c => c.Name))}, " +
+                $"or keep {codec.Name} and set alphaMode to matteBelow or matteRight, which carries the alpha " +
+                "as a second image in the same frame and works with any codec.", nameof(name));
+
         return codec;
     }
 
@@ -86,11 +127,15 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
 
     /// <summary>Sweep the composition and pipe every kept frame into ffmpeg.</summary>
     public (VideoResult Video, SweepReport Sweep) Encode(SweepSpec spec, string outputPath, VideoCodec codec, double outputFps) =>
-        Encode(cut.LoadComposition(spec.Composition), spec, outputPath, codec, outputFps);
+        Encode(cut.LoadComposition(spec.Composition), spec, outputPath, codec, outputFps, AlphaMode.Embedded);
+
+    public (VideoResult Video, SweepReport Sweep) Encode(Composition composition, SweepSpec spec, string outputPath, VideoCodec codec, double outputFps) =>
+        Encode(composition, spec, outputPath, codec, outputFps, AlphaMode.Embedded);
 
     /// <summary>The same encode over a composition already in hand, so a project's render defaults
     /// are read once rather than by loading it twice.</summary>
-    public (VideoResult Video, SweepReport Sweep) Encode(Composition composition, SweepSpec spec, string outputPath, VideoCodec codec, double outputFps)
+    public (VideoResult Video, SweepReport Sweep) Encode(Composition composition, SweepSpec spec,
+        string outputPath, VideoCodec codec, double outputFps, AlphaMode alphaMode)
     {
         cut.EnsureVideoAllowed();
 
@@ -110,7 +155,7 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
             alpha ? SKAlphaType.Unpremul : SKAlphaType.Premul));
 
         var sweepFps = spec.SweepFps > 0 ? spec.SweepFps : defaults?.Fps > 0 ? defaults.Fps : cut.Options.DefaultFps;
-        var args = BuildArguments(width, height, sweepFps, outputFps, codec, outputPath);
+        var args = BuildArguments(width, height, sweepFps, outputFps, codec, outputPath, alpha, alphaMode);
         log.LogInformation("ffmpeg {Args}", args);
 
         using var process = new Process
@@ -180,10 +225,107 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         var info = new FileInfo(outputPath);
         if (!info.Exists) throw new InvalidOperationException($"ffmpeg reported success but wrote no file at '{outputPath}'. {Tail(stderr)}");
 
-        return (new VideoResult(outputPath, info.Length, frames, outputFps, frames / outputFps, codec.Name, alpha), report);
+        var actualFormat = PixelFormatOf(outputPath);
+        if (alpha && alphaMode == AlphaMode.Embedded) VerifyEmbeddedAlpha(codec, actualFormat, outputPath);
+
+        var note = alpha && alphaMode != AlphaMode.Embedded
+            ? $"Alpha is carried as a matte: the frame is {(alphaMode == AlphaMode.MatteRight ? "twice as wide, colour left and alpha right" : "twice as tall, colour on top and alpha below")}. " +
+              "Composite with colour x alpha; the colour half is straight (unpremultiplied) alpha."
+            : null;
+
+        var result = new VideoResult(outputPath, info.Length, frames, outputFps, frames / outputFps, codec.Name, alpha)
+        {
+            AlphaMode = alphaMode,
+            PixelFormat = actualFormat,
+            Note = note,
+        };
+        return (result, report);
     }
 
-    private static string BuildArguments(int width, int height, double inputFps, double outputFps, VideoCodec codec, string output)
+    /// <summary>
+    /// The filter that packs colour and alpha into one opaque frame.
+    ///
+    /// <para>Colour keeps its own pixels; the alpha becomes a greyscale image beside or below it.
+    /// A player composites with <c>colour * alpha</c>. This is what lets H.264 - which has no alpha
+    /// channel at all - deliver transparency, and it is what web players do for Safari.</para>
+    ///
+    /// <para>The colour half is straight (unpremultiplied) alpha, which is what the sweep produces
+    /// when alpha is asked for, so the multiply at playback is correct rather than doubled.</para>
+    /// </summary>
+    private static string MatteFilter(AlphaMode mode)
+    {
+        var stack = mode == AlphaMode.MatteRight ? "hstack" : "vstack";
+        return "[0:v]format=rgba,split=2[c][a];" +
+               "[a]alphaextract,format=rgba[am];" +
+               $"[c][am]{stack}=inputs=2[v]";
+    }
+
+    /// <summary>
+    /// Confirm the finished file really carries alpha.
+    ///
+    /// <para>Choosing an alpha-capable codec is not the same as getting alpha out the other end.
+    /// Measured here: libvpx-vp9 on ffmpeg N-91454 (2018) accepts <c>-pix_fmt yuva420p</c>, reports
+    /// success, and writes plain <c>yuv420p</c> - a silently opaque "transparent" video, which is
+    /// the exact outcome the codec check was written to prevent. Validating the REQUEST was never
+    /// enough; this validates the RESULT.</para>
+    /// </summary>
+    private void VerifyEmbeddedAlpha(VideoCodec codec, string? actualFormat, string outputPath)
+    {
+        if (actualFormat is null)
+        {
+            log.LogWarning("Could not read the pixel format of {Path}; alpha is unverified", outputPath);
+            return;
+        }
+
+        if (HasAlpha(actualFormat)) return;
+
+        var alternatives = string.Join(" or ", Codecs.Values.Where(c => c.Alpha).Select(c => c.Name));
+        throw new InvalidOperationException(
+            $"Alpha was requested and {codec.Name} ({codec.Encoder}) accepted it, but the finished file is '{actualFormat}', " +
+            $"which has no alpha channel - this ffmpeg dropped it silently. The file has been left at '{outputPath}' so you can see for yourself. " +
+            $"Either use {alternatives} if one of them works on this ffmpeg, or set alphaMode to matteBelow / matteRight, " +
+            "which carries the alpha as a second image in the same frame and does not depend on codec alpha support at all.");
+    }
+
+    /// <summary>A pixel format with an alpha component. ffmpeg names them consistently enough that
+    /// the name is the test: yuva*, *bgra, rgba, argb, abgr, ya*, pal8.</summary>
+    public static bool HasAlpha(string pixelFormat) =>
+        pixelFormat.StartsWith("yuva", StringComparison.OrdinalIgnoreCase)
+        || pixelFormat.StartsWith("gbra", StringComparison.OrdinalIgnoreCase)
+        || pixelFormat.StartsWith("ya", StringComparison.OrdinalIgnoreCase)
+        || pixelFormat.Contains("rgba", StringComparison.OrdinalIgnoreCase)
+        || pixelFormat.Contains("argb", StringComparison.OrdinalIgnoreCase)
+        || pixelFormat.Contains("abgr", StringComparison.OrdinalIgnoreCase)
+        || pixelFormat.Contains("bgra", StringComparison.OrdinalIgnoreCase);
+
+    /// <summary>The pixel format ffprobe reports for a finished file, or null when it cannot be
+    /// asked. ffprobe sits beside ffmpeg in every distribution that ships both.</summary>
+    private string? PixelFormatOf(string path)
+    {
+        try
+        {
+            var probe = FfprobePath();
+            var output = Run(probe, $"-v error -select_streams v:0 -show_entries stream=pix_fmt -of csv=p=0 \"{path}\"", TimeSpan.FromSeconds(15));
+            var value = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+        catch (Exception ex)
+        {
+            log.LogDebug(ex, "ffprobe could not read the pixel format of {Path}", path);
+            return null;
+        }
+    }
+
+    private string FfprobePath()
+    {
+        var ffmpeg = cut.Options.FfmpegPath;
+        var directory = Path.GetDirectoryName(ffmpeg);
+        var name = Path.GetFileName(ffmpeg).Replace("ffmpeg", "ffprobe", StringComparison.OrdinalIgnoreCase);
+        return string.IsNullOrEmpty(directory) ? name : Path.Combine(directory, name);
+    }
+
+    private static string BuildArguments(int width, int height, double inputFps, double outputFps,
+        VideoCodec codec, string output, bool alpha, AlphaMode mode)
     {
         var args = new List<string>
         {
@@ -204,14 +346,29 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
             args.Add(Rate(outputFps));
         }
 
+        var matte = alpha && mode != AlphaMode.Embedded;
+        if (matte)
+        {
+            args.Add("-filter_complex");
+            args.Add(MatteFilter(mode));
+            args.Add("-map");
+            args.Add("[v]");
+        }
+
         args.Add("-c:v");
         args.Add(codec.Encoder);
-        if (codec.PixelFormat is { Length: > 0 } pixelFormat)
+
+        // A matte is an OPAQUE frame, so the codec's alpha pixel format would be wrong for it -
+        // and h264/h265 have none anyway. yuv420p is what plays everywhere.
+        var pixelFormat = matte ? "yuv420p" : codec.PixelFormat;
+        if (pixelFormat is { Length: > 0 })
         {
             args.Add("-pix_fmt");
             args.Add(pixelFormat);
         }
-        args.AddRange(codec.ExtraArgs);
+
+        // The gif codec brings its own filter_complex; two of them cannot coexist.
+        if (!matte || codec.Name != "gif") args.AddRange(codec.ExtraArgs);
         args.Add(output);
 
         return string.Join(' ', args.Select(Quote));

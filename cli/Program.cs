@@ -145,13 +145,15 @@ public static class Program
         ClipPlan? plan = null;
         if (opts.Has("to")) times = Range(from, opts.Number("to", 3), fps);
         else (times, plan) = ClipPlanner.Plan(from, opts.Number("duration", defaults?.Duration ?? 3), fps);
-        var codec = VideoEncoder.Resolve(opts.Text("codec") ?? defaults?.Codec, alpha);
+        var alphaMode = ParseAlphaMode(opts.Text("alpha-mode"));
+        var codec = VideoEncoder.Resolve(opts.Text("codec") ?? defaults?.Codec, alpha, alphaMode);
         var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
         var path = cut.ResolveWrite(stem + codec.Extension);
 
-        var (video, report) = encoder.Encode(loaded, Spec(opts, times, fps), path, codec, fps);
+        var (video, report) = encoder.Encode(loaded, Spec(opts, times, fps), path, codec, fps, alphaMode);
 
-        Console.WriteLine($"{video.Path}  ({video.Bytes:N0} bytes, {video.Frames} frames, {video.Seconds:0.######}s, {codec.Name})");
+        Console.WriteLine($"{video.Path}  ({video.Bytes:N0} bytes, {video.Frames} frames, {video.Seconds:0.######}s, {codec.Name}, {video.PixelFormat})");
+        if (video.Note is { Length: > 0 }) Console.WriteLine($"  {video.Note}");
         ReportTiming(plan);
         Report(report);
         return 0;
@@ -286,6 +288,18 @@ public static class Program
             : Path.GetFileNameWithoutExtension(file);
     }
 
+    private static AlphaMode ParseAlphaMode(string? value)
+    {
+        if (string.IsNullOrWhiteSpace(value)) return AlphaMode.Embedded;
+        return value.Replace("-", "").Replace("_", "").ToLowerInvariant() switch
+        {
+            "embedded" or "channel" or "alpha" => AlphaMode.Embedded,
+            "mattebelow" or "matte" or "vstack" or "stacked" or "below" => AlphaMode.MatteBelow,
+            "matteright" or "hstack" or "sidebyside" or "right" => AlphaMode.MatteRight,
+            _ => throw new ArgumentException($"Unknown --alpha-mode '{value}'. Use embedded, matteBelow or matteRight."),
+        };
+    }
+
     private static double[] Range(double from, double to, double fps)
     {
         var count = (int)Math.Floor((to - from) * fps + 1e-9);
@@ -361,7 +375,10 @@ public static class Program
           --width N --height N       layout viewport in CSS pixels (default 1280x720)
           --scale N                  pixel multiplier, like a HiDPI display
           --background '#101014'     frame clear colour
-          --alpha                    transparent clear, and a codec that carries it
+          --alpha                    transparent clear
+          --alpha-mode <mode>        embedded (real alpha channel; vp9/prores only),
+                                     matteBelow or matteRight (alpha as a second image in
+                                     the same frame - works with h264 and everything else)
           --compositions <dirs>      override Cut:CompositionRoots
           --output <dir>             override Cut:OutputRoot
           --ffmpeg <path>            override Cut:FfmpegPath

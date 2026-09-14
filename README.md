@@ -89,7 +89,7 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `render_frame` | one PNG at `t`, swept from 0 so it matches the video | **in** |
 | `contact_sheet` | N frames tiled into one timestamped PNG — an agent reads one image and sees a whole motion | **in** |
 | `render_frames` | the image sequence, encoded on the thread pool | **in** |
-| `render_video` | raw RGBA into ffmpeg; `alpha` selects a transparent clear and an alpha-capable codec | **in** |
+| `render_video` | raw RGBA into ffmpeg; `alpha` gives a transparent clear, embedded or as a matte | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
 | `save_project` / `load_project` / `update_project` / `list_projects` / `attach_asset` | the work, in a file a later run can reopen | **in** |
@@ -205,6 +205,32 @@ engine CupriCut renders with.
 That is why it was cheap: the preview is an `ISurfaceSource`, the seam the engine already has for
 live pixel producers, so it costs no PNG encode; and the region drag is `OnPointer`, the same one a
 pinch gesture uses. Nothing here needed an engine change.
+
+## Transparency
+
+`alpha: true` clears the frame to transparent. How that reaches the file is `alphaMode`:
+
+| mode | what you get | codecs |
+|---|---|---|
+| `embedded` *(default)* | a real alpha channel | **vp9**, **prores** only |
+| `matteBelow` | one opaque frame of twice the height: colour on top, alpha as greyscale below | **any**, h264 included |
+| `matteRight` | the same, side by side | **any** |
+
+**H.264 has no alpha channel** — not in Baseline, Main or High, and no pixel-format argument
+invents one. Asking for `embedded` alpha on h264 is refused, and it names both ways out. A matte is
+how h264 carries transparency, and it is what web players do for Safari: composite with
+`colour x alpha` (the colour half is straight, not premultiplied).
+
+```bash
+cupricut video --composition logo.html --alpha --alpha-mode matteBelow --codec h264
+#  → 1280x1440 h264, yuv420p. Recompose:
+#    ffmpeg -i out.mp4 -filter_complex #      "[0:v]crop=1280:720:0:0[c];[0:v]crop=1280:720:0:720,format=gray[a];[c][a]alphamerge" out.png
+```
+
+**The result is verified, not assumed.** Choosing an alpha-capable codec is not the same as getting
+alpha out the other end: measured on ffmpeg N-91454, libvpx-vp9 accepts `-pix_fmt yuva420p`, reports
+success and writes plain `yuv420p`. CupriCut now probes the finished file and fails loudly if the
+alpha it was asked for is not there — the file is left in place so you can see for yourself.
 
 ## Safety, for a tool that writes files
 

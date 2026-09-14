@@ -182,6 +182,12 @@ open a PNG somewhere else and then put the problem into prose.
 
 ![The studio window](docs/studio.png)
 
+The **Settings** page has three tabs — the MCP endpoint with copyable URLs, the paths and render
+settings in force, and **Calibrate**, which runs the capability checks and the parallelism benchmark
+in the window and shows the failures:
+
+![Calibration in the settings page](docs/settings.png)
+
 Pick a project, **play it in real time**, scrub to a frame, drag a box round what is wrong and type
 a sentence. The window holds the composition open between frames — opening and settling costs
 25–370 ms, the frame itself 3–7 ms — so playback runs at 144–296 fps of headroom against a 30 fps

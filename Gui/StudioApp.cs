@@ -63,10 +63,12 @@ public sealed class StudioApp(StudioModel model) : CupriApp
 
           <div class="bar">
             <div class="brand">CupriCut</div>
-            <div class="barsub">Studio &middot; the MCP server is running on this window</div>
+            <cupri-button data-cut-view="studio" class="nav {{StudioNavClass}}">Studio</cupri-button>
+            <cupri-button data-cut-view="settings" class="nav {{SettingsNavClass}}">Settings</cupri-button>
+            <div class="barsub">{{ServerState}}</div>
           </div>
 
-          <div class="body">
+          <div class="body {{StudioClass}}">
 
             <div class="rail">
               <div class="railhead">PROJECTS</div>
@@ -133,13 +135,71 @@ public sealed class StudioApp(StudioModel model) : CupriApp
             </div>
 
           </div>
+
+          <div class="settings {{SettingsClass}}">
+            <div class="tabs">
+              <cupri-button data-cut-tab="server" class="tab {{ServerTabNav}}">MCP server</cupri-button>
+              <cupri-button data-cut-tab="render" class="tab {{RenderTabNav}}">Rendering</cupri-button>
+              <cupri-button data-cut-tab="calibrate" class="tab {{CalibrateTabNav}}">Calibrate</cupri-button>
+            </div>
+
+            <div class="pane {{ServerTabClass}}">
+              <div class="sechead">ENDPOINT</div>
+              <div class="row"><div class="key">MCP URL</div><div class="val mono">{{ServerUrl}}</div>
+                <cupri-button data-cupri-copy="{{ServerUrl}}">Copy</cupri-button></div>
+              <div class="row"><div class="key">Health</div><div class="val mono">{{HealthUrl}}</div>
+                <cupri-button data-cupri-copy="{{HealthUrl}}">Copy</cupri-button></div>
+              <div class="row"><div class="key">Status</div><div class="val">{{ServerState}}</div></div>
+              <div class="row"><div class="key">Password</div><div class="val">{{PasswordState}}</div></div>
+              <div class="hint">
+                Point an MCP client at the URL above. It is the same server whether this window is
+                open or CupriCut is run headless with -c.
+              </div>
+            </div>
+
+            <div class="pane {{RenderTabClass}}">
+              <div class="sechead">PATHS</div>
+              <div class="row"><div class="key">Compositions</div><div class="val mono">{{CompositionRootPaths}}</div></div>
+              <div class="row"><div class="key">Projects</div><div class="val mono">{{ProjectRootPath}}</div></div>
+              <div class="row"><div class="key">Output</div><div class="val mono">{{OutputRootPath}}</div></div>
+              <div class="row"><div class="key">ffmpeg</div><div class="val mono">{{FfmpegPath}}</div></div>
+              <div class="sechead">RENDERING</div>
+              <div class="row"><div class="key">Workers</div><div class="val">{{WorkersSetting}}</div></div>
+              <div class="row"><div class="key">Engine</div><div class="val">{{EngineVersion}}</div></div>
+              <div class="hint">
+                These come from CupriCut.json. Calibrate measures the worker count for this machine.
+              </div>
+            </div>
+
+            <div class="pane {{CalibrateTabClass}}">
+              <div class="tools">
+                <cupri-button data-cut-action="calibrate">Run calibration</cupri-button>
+                <cupri-button data-cut-action="toggle-checks">{{ShowAllLabel}}</cupri-button>
+                <cupri-button data-cut-action="apply-workers" class="{{ApplyWorkersClass}}">{{ApplyWorkersLabel}}</cupri-button>
+                <div class="spin {{CalibratingClass}}">measuring&hellip;</div>
+              </div>
+              <div class="summary">{{CalibrationSummary}}</div>
+              <div class="empty {{NoCalibrationClass}}">
+                Nothing measured yet. Calibration encodes a two-frame clip per codec with the real
+                arguments CupriCut uses, then times a render at several worker counts.
+              </div>
+              <div data-repeat="Calibration">
+                <div class="chk {{RowClass}}">
+                  <div class="chkline">
+                    <div class="chkmark">{{Mark}}</div>
+                    <div class="chkname">{{Group}} &middot; {{Name}}</div>
+                    <div class="chkdetail">{{Detail}}</div>
+                  </div>
+                  <div class="chkfix {{FixClass}}">{{Fix}}</div>
+                </div>
+              </div>
+            </div>
+          </div>
+
         </div>
         """;
 
     public override string Css => """
-        /* The engine has no conditional attribute, so "hidden" is how the model hides things. */
-        .hidden { display:none; }
-
         /* Fluid, not fixed. The window is laid out at its LOGICAL size, so on a 150% display a
            1500px window is 1000 logical pixels - a layout built from hardcoded 1500px columns
            overflows and clips its right-hand panel. The two rails keep fixed widths because a
@@ -150,7 +210,7 @@ public sealed class StudioApp(StudioModel model) : CupriApp
         .bar { height:46px; display:flex; align-items:center; background:#141b26;
                border-bottom:1px solid #223047; }
         .brand { width:104px; margin-left:16px; font-size:16px; font-weight:700; color:#f4f6fb; }
-        .barsub { flex:1; font-size:12px; color:#63718a; }
+        .barsub { flex:1; margin-left:16px; font-size:12px; color:#63718a; }
 
         .body { flex:1; display:flex; }
 
@@ -209,6 +269,47 @@ public sealed class StudioApp(StudioModel model) : CupriApp
 
         .cupri-button { background:#223047; color:#e8edf5; border-radius:5px;
                         padding:6px 11px; font-size:12px; }
+
+        /* ---- navigation and settings ---------------------------------------------------- */
+
+        .nav   { margin-left:8px; background:transparent; color:#8b98ad; }
+        .navon { background:#223047; color:#f4f6fb; }
+
+        .settings { flex:1; overflow:scroll; }
+
+        .tabs { display:flex; align-items:center; margin:16px 0 0 24px; }
+        .tab   { margin-right:8px; background:#151d2a; color:#8b98ad; }
+        .tabon { background:#223047; color:#f4f6fb; }
+
+        .pane { margin:18px 24px 24px 24px; }
+        .sechead { font-size:11px; font-weight:700; letter-spacing:2px; color:#5a6a85;
+                   margin:0 0 10px 0; }
+
+        .row  { display:flex; align-items:center; margin-bottom:8px; }
+        .key  { width:130px; font-size:12px; color:#8b98ad; }
+        .val  { flex:1; font-size:13px; color:#e8edf5; }
+        .mono { font-size:12px; color:#c6d2e3; }
+
+        .hint { margin-top:14px; font-size:12px; color:#5a6a85; }
+
+        .summary { margin:14px 0 12px 0; font-size:13px; color:#e8edf5; }
+        .spin    { font-size:12px; color:#d9642a; }
+
+        .chk      { margin-bottom:6px; padding:8px 10px; background:#151d2a; border-radius:5px; }
+        .chk.fail { background:#2a1b1b; }
+        .chkline  { display:flex; align-items:center; }
+        .chkmark  { width:46px; font-size:11px; font-weight:700; color:#4ec9b0; }
+        .chk.fail .chkmark { color:#e8654a; }
+        .chkname  { width:230px; font-size:12px; font-weight:700; color:#e8edf5; }
+        .chkdetail{ flex:1; font-size:12px; color:#8b98ad; }
+        .chkfix   { margin-top:6px; font-size:12px; color:#d9642a; }
+
+        /* ---- last on purpose -------------------------------------------------------------
+           The engine has no conditional attribute, so a computed class on the model is how
+           anything is hidden. It has to come LAST: these are all single-class selectors, so
+           specificity ties and the later rule wins - declared at the top, `.body { display:flex }`
+           beat it and the studio page stayed visible underneath the settings page. */
+        .hidden { display:none; }
         """;
 
     /// <summary>Fonts come from the same directories the renderer registers, so the window's text

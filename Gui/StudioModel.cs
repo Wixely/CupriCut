@@ -38,6 +38,68 @@ public sealed class StudioModel
     /// <summary>True once a frame has been previewed, so the window can stop showing the placeholder.</summary>
     public bool HasFrame { get; set; }
 
+    // ---- which page, and which tab of it ----------------------------------------------------
+    //
+    // The engine binds {{Path}} and data-repeat and has no conditional attribute, so "show this
+    // view" is a computed class driving display:none - the same mechanism the empty states use.
+    // Fine for a handful of views; it would want rethinking past a dozen.
+
+    /// <summary>"studio" or "settings".</summary>
+    public string View { get; set; } = "studio";
+
+    /// <summary>Which settings tab: "server", "render" or "calibrate".</summary>
+    public string SettingsTab { get; set; } = "server";
+
+    public string StudioClass => View == "studio" ? "" : "hidden";
+    public string SettingsClass => View == "settings" ? "" : "hidden";
+    public string StudioNavClass => View == "studio" ? "navon" : "";
+    public string SettingsNavClass => View == "settings" ? "navon" : "";
+
+    public string ServerTabClass => SettingsTab == "server" ? "" : "hidden";
+    public string RenderTabClass => SettingsTab == "render" ? "" : "hidden";
+    public string CalibrateTabClass => SettingsTab == "calibrate" ? "" : "hidden";
+    public string ServerTabNav => SettingsTab == "server" ? "tabon" : "";
+    public string RenderTabNav => SettingsTab == "render" ? "tabon" : "";
+    public string CalibrateTabNav => SettingsTab == "calibrate" ? "tabon" : "";
+
+    // ---- the server tab ---------------------------------------------------------------------
+
+    /// <summary>The MCP endpoint, as a client would be given it.</summary>
+    public string ServerUrl { get; set; } = "";
+
+    public string ServerState { get; set; } = "";
+    public string ServerPath { get; set; } = "";
+    public string HealthUrl { get; set; } = "";
+    public string PasswordState { get; set; } = "";
+
+    // ---- the render tab ---------------------------------------------------------------------
+
+    public string FfmpegPath { get; set; } = "";
+    public string OutputRootPath { get; set; } = "";
+    public string ProjectRootPath { get; set; } = "";
+    public string CompositionRootPaths { get; set; } = "";
+    public string WorkersSetting { get; set; } = "";
+    public string EngineVersion { get; set; } = "";
+
+    // ---- the calibrate tab ------------------------------------------------------------------
+
+    public List<CalibrationRow> Calibration { get; set; } = [];
+
+    /// <summary>A calibration run is in flight - it takes a few seconds.</summary>
+    public bool Calibrating { get; set; }
+
+    public string CalibrationSummary { get; set; } = "Not run yet.";
+
+    /// <summary>Show every check rather than only the failures.</summary>
+    public bool ShowAllChecks { get; set; }
+
+    public string CalibratingClass => Calibrating ? "" : "hidden";
+    public string ShowAllLabel => ShowAllChecks ? "Showing all checks" : "Showing failures only";
+    public string NoCalibrationClass => Calibration.Count == 0 ? "" : "hidden";
+    public string ApplyWorkersClass => RecommendedWorkers > 0 ? "" : "hidden";
+    public int RecommendedWorkers { get; set; }
+    public string ApplyWorkersLabel => $"Use {RecommendedWorkers} workers";
+
     /// <summary>The clock is advancing in real time.</summary>
     public bool Playing { get; set; }
 
@@ -121,6 +183,20 @@ public sealed class ProjectRow
     /// <summary>Open annotations, as a badge. Empty string when there are none, so the markup can
     /// hide the badge by testing for content.</summary>
     public string Badge { get; set; } = string.Empty;
+}
+
+/// <summary>One row of the calibration table.</summary>
+public sealed class CalibrationRow
+{
+    public string Group { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Detail { get; set; } = string.Empty;
+    public string Fix { get; set; } = string.Empty;
+    public bool Ok { get; set; }
+
+    public string Mark => Ok ? "PASS" : "FAIL";
+    public string RowClass => Ok ? "pass" : "fail";
+    public string FixClass => string.IsNullOrEmpty(Fix) ? "hidden" : "";
 }
 
 /// <summary>One annotation in the list beside the preview.</summary>

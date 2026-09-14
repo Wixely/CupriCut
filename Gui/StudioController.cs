@@ -19,6 +19,7 @@ namespace CupriCut.Gui;
 public sealed partial class StudioController : IDisposable
 {
     private readonly CupriCutService _cut;
+    private readonly VideoEncoder _encoder;
     private readonly ILogger _log;
     private readonly StudioModel _model;
     private readonly PreviewSurface _surface = new();
@@ -33,10 +34,14 @@ public sealed partial class StudioController : IDisposable
     private readonly FrameClock _frameClock = new();
     private Thread? _renderThread;
     private DateTime _lastTick = DateTime.UtcNow;
+    private Configuration.ServerOptions? _server;
+    private bool _served;
+    private int _calibrationRuns;
 
-    public StudioController(CupriCutService cut, StudioModel model, ILogger log)
+    public StudioController(CupriCutService cut, VideoEncoder encoder, StudioModel model, ILogger log)
     {
         _cut = cut;
+        _encoder = encoder;
         _model = model;
         _log = log;
     }
@@ -57,13 +62,49 @@ public sealed partial class StudioController : IDisposable
         document.OnAction("data-cut-action", e => { Command(e.Value); return true; });
         document.OnAction("data-cut-goto", e => { GoTo(e.Value); return true; });
         document.OnAction("data-cut-delete", e => { Delete(e.Value); return true; });
+        document.OnAction("data-cut-view", e => { _model.View = e.Value; return true; });
+        document.OnAction("data-cut-tab", e => { _model.SettingsTab = e.Value; return true; });
 
         // The region drag. Returning true on Down captures the pointer for this element, so the
         // move and up phases arrive here rather than going to the ordinary gesture recogniser.
         document.OnPointer(StudioApp.MarkAttribute, OnMark);
 
         Refresh();
+        DescribeSettings();
         StartRenderThread();
+    }
+
+    /// <summary>The server and path settings, read once - they come from configuration that does
+    /// not change under a running window.</summary>
+    public void DescribeSettings()
+    {
+        var options = _cut.Options;
+        _model.ServerUrl = _server is null ? "(not served)" : $"http://{_server.Host}:{_server.Port}{_server.Path}";
+        _model.HealthUrl = _server is null ? "(not served)" : $"http://{_server.Host}:{_server.Port}/healthz";
+        _model.ServerPath = _server?.Path ?? "";
+        _model.ServerState = _served
+            ? "MCP server running on this window"
+            : "MCP server unavailable - the preview and annotations still work";
+        _model.PasswordState = string.IsNullOrWhiteSpace(_server?.Password)
+            ? "none (anyone who can reach the port can drive it)"
+            : "set (clients must send X-MCP-Password)";
+
+        _model.FfmpegPath = options.EnableVideo ? options.FfmpegPath : "video disabled (Cut:EnableVideo)";
+        _model.OutputRootPath = _cut.OutputRoot;
+        _model.ProjectRootPath = _cut.ProjectRoot;
+        _model.CompositionRootPaths = string.Join("  ", _cut.CompositionRoots);
+        _model.WorkersSetting = options.RenderWorkers > 0
+            ? $"{options.RenderWorkers} (from Cut:RenderWorkers)"
+            : $"{ParallelRenderer.DefaultWorkers} (built-in guess; calibrate to measure this machine)";
+        _model.EngineVersion = CupriCutService.EngineVersion;
+    }
+
+    /// <summary>Told by the host what it is serving, so the settings page can show it.</summary>
+    public void Serving(Configuration.ServerOptions server, bool served)
+    {
+        _server = server;
+        _served = served;
+        DescribeSettings();
     }
 
     /// <summary>Reload the project list from disk. Cheap, and the only thing that notices a project
@@ -156,6 +197,19 @@ public sealed partial class StudioController : IDisposable
                 _model.Time = 0;
                 _wake.Set();
                 break;
+
+            case "calibrate":
+                RunCalibration();
+                break;
+
+            case "toggle-checks":
+                _model.ShowAllChecks = !_model.ShowAllChecks;
+                ShowCalibration();
+                break;
+
+            case "apply-workers":
+                ApplyWorkers();
+                break;
         }
     }
 
@@ -192,6 +246,76 @@ public sealed partial class StudioController : IDisposable
         {
             _model.Status = "Could not delete: " + ex.Message;
         }
+    }
+
+    // ---- calibration -------------------------------------------------------------------------
+
+    private CalibrationReport? _lastCalibration;
+
+    /// <summary>Run the checks on a worker: they encode several clips and time a render, which is
+    /// seconds of work and must not be done on the thread painting the window.</summary>
+    private void RunCalibration()
+    {
+        if (_model.Calibrating) return;
+
+        _model.Calibrating = true;
+        _model.CalibrationSummary = "Encoding test clips and timing the renderer...";
+        var run = Interlocked.Increment(ref _calibrationRuns);
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var report = new Calibrator(_cut, _encoder, _log);
+                var result = report.Run(tuneWorkers: true);
+
+                if (Volatile.Read(ref _calibrationRuns) != run) return;   // superseded
+                _lastCalibration = result;
+                _model.RecommendedWorkers = report.BestWorkers ?? 0;
+                _model.CalibrationSummary = result.AllPassed
+                    ? $"All {result.Passed} checks passed in {result.ElapsedMs:0} ms."
+                    : $"{result.Failed} of {result.Checks.Count} checks failed ({result.ElapsedMs:0} ms).";
+                ShowCalibration();
+            }
+            catch (Exception ex)
+            {
+                _model.CalibrationSummary = "Calibration failed: " + ex.Message;
+                _log.LogWarning(ex, "Calibration failed");
+            }
+            finally
+            {
+                if (Volatile.Read(ref _calibrationRuns) == run) _model.Calibrating = false;
+            }
+        });
+    }
+
+    private void ShowCalibration()
+    {
+        if (_lastCalibration is not { } report) return;
+        var rows = _model.ShowAllChecks ? report.Checks : report.Failures;
+        _model.Calibration = [.. rows.Select(c => new CalibrationRow
+        {
+            Group = c.Group,
+            Name = c.Name,
+            Detail = c.Detail,
+            Fix = c.Fix ?? string.Empty,
+            Ok = c.Ok,
+        })];
+    }
+
+    /// <summary>Use the measured worker count for the rest of this session.
+    ///
+    /// <para>In memory only: writing it to CupriCut.Local.json is the CLI's job (cupricut calibrate
+    /// --apply), because the window is not the place to be editing configuration behind someone's
+    /// back. The status strip says so rather than leaving it to be discovered.</para></summary>
+    private void ApplyWorkers()
+    {
+        if (_model.RecommendedWorkers <= 0) return;
+        _cut.Options.RenderWorkers = _model.RecommendedWorkers;
+        _model.WorkersSetting = $"{_model.RecommendedWorkers} (measured, this session only)";
+        _model.CalibrationSummary =
+            $"Using {_model.RecommendedWorkers} workers for this session. " +
+            "Run \"cupricut calibrate --apply\" to make it permanent.";
     }
 
     // ---- the region drag --------------------------------------------------------------------

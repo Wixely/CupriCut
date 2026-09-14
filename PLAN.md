@@ -120,8 +120,9 @@ built on, so it goes first.
 
 **The window**
 
-22. **A settings page, tabbed.** Calibrate is one tab; the MCP server — its URL, copyable — is
-    another.
+22. ~~**A settings page, tabbed.**~~ **Done.** Three tabs: the MCP server with copyable URLs
+    (`data-cupri-copy`, which the desktop host already wires to the clipboard), the paths and render
+    settings, and Calibrate — which runs on a worker and shows failures only until asked otherwise.
 23. **Annotations that can be worked with.** The region drawn must be VISIBLE: a live marquee while
     dragging, and every annotation drawn on the frame it belongs to. Editable text after the fact.
     The recorded time and frame kept, and the marker shown for a second after its timestamp so it

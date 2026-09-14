@@ -105,6 +105,57 @@ public sealed class StudioTests
         Assert.Equal((0d, 0d), StudioController.Normalise(SKRect.Create(0, 0, 0, 0), 10, 10));
     }
 
+    [Fact]
+    public void Settings_shot()
+    {
+        foreach (var tab in new[] { "server", "render", "calibrate" })
+        {
+            var model = new StudioModel
+            {
+                View = "settings",
+                SettingsTab = tab,
+                ServerUrl = "http://localhost:5722/mcp",
+                HealthUrl = "http://localhost:5722/healthz",
+                ServerState = "MCP server running on this window",
+                PasswordState = "none (anyone who can reach the port can drive it)",
+                CompositionRootPaths = @"C:\CupriCut\compositions  C:\CupriCut\projects",
+                ProjectRootPath = @"C:\CupriCut\projects",
+                OutputRootPath = @"C:\CupriCut\output",
+                FfmpegPath = "ffmpeg",
+                WorkersSetting = "6 (built-in guess; calibrate to measure this machine)",
+                EngineVersion = "CupriFace 0.24.1.0",
+                RecommendedWorkers = 8,
+                ShowAllChecks = true,
+                CalibrationSummary = "1 of 19 checks failed (3109 ms).",
+                Calibration =
+                [
+                    new CalibrationRow { Group = "Tools", Name = "ffmpeg", Ok = true, Detail = "ffmpeg version N-91454-g3ce4034308" },
+                    new CalibrationRow { Group = "Codecs", Name = "h264", Ok = true, Detail = "yuv420p" },
+                    new CalibrationRow { Group = "Codecs", Name = "prores", Ok = true, Detail = "yuva444p10le" },
+                    new CalibrationRow { Group = "Embedded alpha", Name = "vp9", Ok = false,
+                        Detail = "DROPPED alpha - wrote yuv420p",
+                        Fix = "This build accepts the alpha pixel format and does not write it. Use a codec that passed, or alphaMode matteBelow / matteRight." },
+                    new CalibrationRow { Group = "Alpha matte", Name = "h264 MatteBelow", Ok = true, Detail = "packed into an opaque frame (yuv420p)" },
+                    new CalibrationRow { Group = "Parallelism", Name = "8 worker(s)", Ok = true, Detail = "1.18 ms/frame, 850 fps   <- best" },
+                    new CalibrationRow { Group = "Parallelism", Name = "recommended", Ok = true, Detail = "8 workers (3.7x over one)" },
+                ],
+            };
+
+            var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
+            using var doc = Open(app);
+            using var img = doc.RenderToImage(app.Width, app.Height, new SKColor(0x0F, 0x13, 0x1A));
+            using var data = img.Encode(SKEncodedImageFormat.Png, 100);
+            using var fs = File.Create(Path.Combine(AppContext.BaseDirectory, $"settings-{tab}.png"));
+            data.SaveTo(fs);
+
+            // The studio page must be out of the way, and the other tabs with it.
+            var text = AllText(doc.Root);
+            Assert.DoesNotContain("PROJECTS", text);
+            if (tab != "server") Assert.DoesNotContain("localhost:5722/mcp", text);
+            if (tab != "calibrate") Assert.DoesNotContain("DROPPED alpha", text);
+        }
+    }
+
     // ---- the drag, driven through the same entry point the window uses -----------------------
 
     [Fact]
@@ -122,7 +173,7 @@ public sealed class StudioTests
         });
 
         var model = new StudioModel();
-        var controller = new StudioController(harness.Cut, model, NullLogger<StudioController>.Instance);
+        var controller = new StudioController(harness.Cut, harness.Encoder, model, NullLogger<StudioController>.Instance);
         var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
 
         using var doc = Open(app);
@@ -185,7 +236,7 @@ public sealed class StudioTests
         harness.Cut.SaveProject("hero", new CutProject { Html = Harness.Keyframed, Render = new RenderSettings() });
 
         var model = new StudioModel();
-        var controller = new StudioController(harness.Cut, model, NullLogger<StudioController>.Instance);
+        var controller = new StudioController(harness.Cut, harness.Encoder, model, NullLogger<StudioController>.Instance);
         var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
         using var doc = Open(app);
         controller.Attach(doc);
@@ -271,7 +322,7 @@ public sealed class StudioTests
         });
 
         var model = new StudioModel();
-        using var controller = new StudioController(harness.Cut, model, NullLogger<StudioController>.Instance);
+        using var controller = new StudioController(harness.Cut, harness.Encoder, model, NullLogger<StudioController>.Instance);
         var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
         using var doc = Open(app);
         controller.Attach(doc);
@@ -303,7 +354,7 @@ public sealed class StudioTests
         });
 
         var model = new StudioModel();
-        using var controller = new StudioController(harness.Cut, model, NullLogger<StudioController>.Instance);
+        using var controller = new StudioController(harness.Cut, harness.Encoder, model, NullLogger<StudioController>.Instance);
         var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
         using var doc = Open(app);
         controller.Attach(doc);
@@ -515,6 +566,11 @@ public sealed class StudioTests
         return edge;
     }
 
+    /// <summary>The text a viewer would actually see.
+    ///
+    /// <para>A display:none subtree still HAS render nodes - layout skips it rather than the build
+    /// omitting it - so walking the tree naively reports text that is not on screen. Skipping those
+    /// subtrees is what makes "this view is hidden" an assertable thing.</para></summary>
     private static string AllText(CupriFace.Dom.RenderNode node)
     {
         var sb = new System.Text.StringBuilder();
@@ -523,6 +579,7 @@ public sealed class StudioTests
 
         void Walk(CupriFace.Dom.RenderNode n)
         {
+            if (n.Style.Display == CupriFace.Style.DisplayType.None) return;
             if (n.Text is { Length: > 0 }) sb.Append(n.Text).Append(' ');
             foreach (var child in n.Children) Walk(child);
         }

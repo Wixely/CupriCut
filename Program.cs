@@ -102,6 +102,7 @@ public static class Program
             builder.Services.AddSingleton<StudioModel>();
             builder.Services.AddSingleton<StudioController>(sp => new StudioController(
                 sp.GetRequiredService<CupriCutService>(),
+                sp.GetRequiredService<VideoEncoder>(),
                 sp.GetRequiredService<StudioModel>(),
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<StudioController>()));
 
@@ -216,6 +217,7 @@ public static class Program
         }
 
         var controller = app.Services.GetRequiredService<StudioController>();
+        controller.Serving(app.Services.GetRequiredService<Microsoft.Extensions.Options.IOptions<ServerOptions>>().Value, served);
         var studio = new StudioApp(model)
         {
             FontSources = [.. StudioFonts(app.Services.GetRequiredService<CupriCutService>())],

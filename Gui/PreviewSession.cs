@@ -79,7 +79,9 @@ public sealed class PreviewSession : IDisposable
     }
 
     /// <summary>The frame at <paramref name="t"/>, as an image the caller owns.</summary>
-    public SKImage RenderAt(double t)
+    /// <param name="overlay">Drawn on top of the finished frame, in frame pixels. This is how the
+    /// annotation marks get into the picture without a second coordinate system.</param>
+    public SKImage RenderAt(double t, Action<SKCanvas, int, int>? overlay = null)
     {
         LastCost = 0;
 
@@ -100,7 +102,23 @@ public sealed class PreviewSession : IDisposable
         }
 
         _at = t;
+        overlay?.Invoke(_surface.Canvas, Width, Height);
+        _surface.Canvas.Flush();
         return _surface.Snapshot();
+    }
+
+    /// <summary>Repaint the LAST time again, overlay included.
+    ///
+    /// <para>A drag changes the overlay without moving the clock, and the marquee has to follow the
+    /// pointer. Re-rendering the document for that is a few milliseconds and keeps one code path;
+    /// caching the base frame would be faster and is not worth the second thing to invalidate.</para>
+    /// </summary>
+    public SKImage? Repaint(Action<SKCanvas, int, int>? overlay)
+    {
+        if (double.IsNaN(_at)) return null;
+        var at = _at;
+        _at = double.NaN;              // force the walk logic to treat this as a fresh render
+        return RenderAt(at, overlay);
     }
 
     /// <summary>The intermediate times an impure composition must be walked through, excluding the

@@ -123,10 +123,22 @@ built on, so it goes first.
 22. ~~**A settings page, tabbed.**~~ **Done.** Three tabs: the MCP server with copyable URLs
     (`data-cupri-copy`, which the desktop host already wires to the clipboard), the paths and render
     settings, and Calibrate — which runs on a worker and shows failures only until asked otherwise.
-23. **Annotations that can be worked with.** The region drawn must be VISIBLE: a live marquee while
-    dragging, and every annotation drawn on the frame it belongs to. Editable text after the fact.
-    The recorded time and frame kept, and the marker shown for a second after its timestamp so it
-    can be found by scrubbing rather than by memory.
+23. ~~**Annotations that can be worked with.**~~ **Done.** The marks are composited *into* the
+    frame rather than layered over it — the rectangle is in frame coordinates, and that is the only
+    space it means anything in, so there is one mapping instead of two that can drift. A live
+    marquee follows the pointer while dragging, with the pixel size read out beside it, and each
+    mark is on screen for a full second after its timestamp so it can be found by scrubbing rather
+    than by landing on the exact frame. Notes are editable after the fact; choosing one jumps the
+    preview to its moment. The frame number is *stamped* at the rate the note was made at rather
+    than derived on read, so changing the project's fps later does not silently renumber what the
+    reviewer saw.
+
+    Two things had to be fixed to get here. `RenderNode.X`/`Y` are parent-relative, so the origin
+    has to be accumulated up the tree the way `HitTesting.Hit` does — taken literally, every note
+    landed in the wrong place. And the overlays had to become *children* of the stage: the engine
+    has no `pointer-events`, so a sibling drawn on top swallowed the drag and the walk up its
+    ancestors never reached the element carrying the mark attribute. A test now asserts that
+    whatever sits under the preview centre still leads to that attribute.
 24. **Project folders**, with drag and drop in and out.
 
 ## Milestone 2 — the timeline (3–4 days)

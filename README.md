@@ -207,6 +207,21 @@ Annotations are stored **in the project**, because that is already the file a la
 in **normalised 0–1 coordinates**, so a note drawn on a 1280×720 preview still means the same region
 when the project renders at 3840×2160.
 
+**You can see what you marked.** The rectangle is drawn *into* the frame, not layered over it — it
+is in frame coordinates, and that is the only space it means anything in, so there is one mapping
+rather than two that can drift apart:
+
+![Annotations drawn on the frame](docs/annotations.png)
+
+A mark stays on screen for a **full second after its timestamp**, so it can be found by scrubbing
+rather than by landing on the exact frame; the selected one is picked out, resolved ones are muted,
+and notes belonging to another moment are simply not drawn. While dragging, a dashed marquee follows
+the pointer with the pixel size read out beside it. Notes are editable after the fact, and choosing
+one jumps the preview to its moment.
+
+Each note also records the **frame number at the rate it was made at** — stamped, not derived on
+read, so changing the project's fps later cannot silently renumber what the reviewer actually saw.
+
 Built on **CupriFace 0.24.1**. The GUI is itself a `CupriApp` — CupriCut's interface is drawn by the
 engine CupriCut renders with.
 That is why it was cheap: the preview is an `ISurfaceSource`, the seam the engine already has for

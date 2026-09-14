@@ -89,9 +89,15 @@ public sealed class StudioApp(StudioModel model) : CupriApp
               </div>
 
               <div class="stagewrap">
-                <div class="stage" data-cupri-surface="preview" data-cut-mark="preview"></div>
-                <div class="placeholder {{PlaceholderClass}}">Select a project to preview a frame.</div>
-                <div class="spinner {{SpinnerClass}}">rendering&hellip;</div>
+                <!-- The overlays are CHILDREN of the stage, not siblings. The engine has no
+                     pointer-events, so an absolutely positioned sibling ON TOP of the stage
+                     swallows the drag: the hit test returns the placeholder and the walk up its
+                     ancestors never passes the element carrying data-cut-mark. Nested, the same
+                     walk reaches the stage and the drag works wherever it lands. -->
+                <div class="stage" data-cupri-surface="preview" data-cut-mark="preview">
+                  <div class="placeholder {{PlaceholderClass}}">Select a project to preview a frame.</div>
+                  <div class="spinner {{SpinnerClass}}">rendering&hellip;</div>
+                </div>
               </div>
 
               <div class="scrub">
@@ -109,21 +115,32 @@ public sealed class StudioApp(StudioModel model) : CupriApp
               </div>
 
               <div class="status">{{Status}}</div>
-              <div class="purity">{{PurityNote}}</div>
+              <div class="purity">{{RenderStat}} &nbsp; {{PurityNote}}</div>
             </div>
 
             <div class="notes">
               <div class="railhead">ANNOTATIONS &middot; {{OpenCount}} open</div>
+              <div class="edit {{EditingClass}}">
+                <div class="editlabel">Rewriting this note</div>
+                <cupri-textfield value="{{EditingNote}}" placeholder="What is wrong with it?"></cupri-textfield>
+                <div class="nactions">
+                  <cupri-button data-cut-action="save-note">Save</cupri-button>
+                  <cupri-button data-cut-action="cancel-note">Cancel</cupri-button>
+                </div>
+              </div>
+
               <div data-repeat="Annotations">
-                <div class="nrow {{RowClass}}">
+                <div class="nrow {{RowClass}} {{EditClass}}">
                   <div class="ntop">
                     <div class="nat">{{At}}</div>
                     <div class="nstatus">{{StatusLabel}}</div>
                   </div>
                   <div class="ntext">{{Note}}</div>
                   <div class="nregion">{{Region}}</div>
+                  <div class="nframe">{{FrameAt}}</div>
                   <div class="nactions">
                     <cupri-button data-cut-goto="{{Id}}">Go to</cupri-button>
+                    <cupri-button data-cut-edit="{{Id}}">Edit</cupri-button>
                     <cupri-button data-cut-delete="{{Id}}">Delete</cupri-button>
                   </div>
                 </div>
@@ -262,6 +279,11 @@ public sealed class StudioApp(StudioModel model) : CupriApp
         .nstatus { width:62px; font-size:11px; color:#5a6a85; }
         .ntext   { font-size:12px; color:#e8edf5; margin-top:5px; }
         .nregion { font-size:11px; color:#5a6a85; margin-top:4px; }
+        .nframe  { font-size:11px; color:#455066; margin-top:2px; }
+        .nrow.editing { border:1px solid #d9642a; }
+        .edit { margin:0 10px 10px 10px; padding:10px; background:#1d2a3f; border-radius:6px; }
+        .editlabel { font-size:11px; font-weight:700; color:#d9642a; margin-bottom:6px; }
+        .edit .cupri-textfield { width:244px; }
         .nactions { margin-top:8px; display:flex; }
         .nactions .cupri-button { margin-right:6px; }
 

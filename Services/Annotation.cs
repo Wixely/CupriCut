@@ -21,6 +21,17 @@ public sealed class Annotation
     /// <summary>The time on the composition's clock this was drawn at, in seconds.</summary>
     public double Time { get; set; }
 
+    /// <summary>The frame number that time lands on, at the project's rate.
+    ///
+    /// <para>Kept alongside the time rather than derived, because deriving it needs the rate the
+    /// project had WHEN THE NOTE WAS MADE - and an agent that changes the frame rate in response to
+    /// the note would silently renumber every earlier one. The time is the truth; this is what the
+    /// reviewer was looking at.</para></summary>
+    public int Frame { get; set; }
+
+    /// <summary>The rate the frame number was counted at, so it can be read back honestly.</summary>
+    public double Fps { get; set; }
+
     /// <summary>Left edge, 0–1 of the frame width.</summary>
     public double X { get; set; }
 
@@ -59,7 +70,17 @@ public sealed class Annotation
     {
         var (px, py, pw, ph) = InPixels(width, height);
         var t = Time.ToString("0.###", CultureInfo.InvariantCulture);
-        return $"[{Id}] t={t}s  {pw}x{ph} at ({px},{py}) of {width}x{height}  \"{Note}\"";
+        var frame = Fps > 0 ? $" (frame {Frame} at {Fps.ToString("0.##", CultureInfo.InvariantCulture)} fps)" : "";
+        return $"[{Id}] t={t}s{frame}  {pw}x{ph} at ({px},{py}) of {width}x{height}  \"{Note}\"";
+    }
+
+    /// <summary>Stamp the frame number for a given rate. Called when the note is made.</summary>
+    public Annotation AtRate(double fps)
+    {
+        if (fps <= 0) return this;
+        Fps = fps;
+        Frame = (int)Math.Round(Time * fps, MidpointRounding.AwayFromZero);
+        return this;
     }
 
     /// <summary>Clamp to the frame and put the rectangle the right way round, so a drag that

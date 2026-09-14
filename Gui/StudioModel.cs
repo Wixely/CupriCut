@@ -32,8 +32,17 @@ public sealed class StudioModel
     /// <summary>A render is in flight. The preview keeps showing the last good frame meanwhile.</summary>
     public bool Rendering { get; set; }
 
-    /// <summary>What just happened, shown in the status strip.</summary>
+    /// <summary>What the reviewer just did, or what went wrong. Written only in response to an
+    /// action, so it stays on screen long enough to be read.
+    ///
+    /// <para>Separate from <see cref="RenderStat"/> on purpose: the render loop reports a frame
+    /// many times a second, and when both shared one line every message worth reading - "that was
+    /// a tap, not a region" - was wiped before it could be.</para></summary>
     public string Status { get; set; } = "Choose a project to preview.";
+
+    /// <summary>The last frame's cost: time, how it was reached, and the rate. Overwritten
+    /// constantly, which is why it is not the status line.</summary>
+    public string RenderStat { get; set; } = string.Empty;
 
     /// <summary>True once a frame has been previewed, so the window can stop showing the placeholder.</summary>
     public bool HasFrame { get; set; }
@@ -121,6 +130,23 @@ public sealed class StudioModel
 
     public List<AnnotationRow> Annotations { get; set; } = [];
 
+    /// <summary>The annotations themselves, for the overlay. Kept beside the display rows so the
+    /// render thread has the geometry without re-reading the project on every frame.</summary>
+    public List<Annotation> Marks { get; set; } = [];
+
+    /// <summary>The annotation whose note is being rewritten, or empty.</summary>
+    public string EditingId { get; set; } = string.Empty;
+
+    /// <summary>The note as it is being typed. Bound two-way to the edit field.</summary>
+    public string EditingNote { get; set; } = string.Empty;
+
+    public string EditingClass => string.IsNullOrEmpty(EditingId) ? "hidden" : "";
+
+    /// <summary>Bumped whenever the overlay would look different without the clock moving - a drag
+    /// in progress, an annotation added or edited. The render loop watches it so the marquee
+    /// follows the pointer.</summary>
+    public int OverlayVersion { get; set; }
+
     // ---- what the markup can actually ask for --------------------------------------------
     //
     // The engine binds {{Path}} and data-repeat, and that is the whole vocabulary: there is no
@@ -205,9 +231,17 @@ public sealed class AnnotationRow
     public string Id { get; set; } = string.Empty;
     public string Note { get; set; } = string.Empty;
     public string At { get; set; } = string.Empty;
+
+    /// <summary>"frame 144 at 120 fps", or empty when the note predates frame stamping.</summary>
+    public string FrameAt { get; set; } = string.Empty;
     public string Region { get; set; } = string.Empty;
     public bool Resolved { get; set; }
     public string StatusLabel { get; set; } = "open";
 
     public string RowClass => Resolved ? "done" : "";
+
+    /// <summary>Set while this row's note is being rewritten, so the list can show which.</summary>
+    public bool Editing { get; set; }
+
+    public string EditClass => Editing ? "editing" : "";
 }

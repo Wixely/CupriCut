@@ -230,6 +230,31 @@ public sealed class StudioTests
     }
 
     [Fact]
+    public void Nothing_overlapping_the_preview_can_swallow_the_drag()
+    {
+        // The engine has no pointer-events, so anything drawn OVER the stage as a sibling takes the
+        // pointer and the walk up its ancestors never reaches the element carrying data-cut-mark -
+        // the drag silently does nothing. The overlays are children of the stage for this reason,
+        // and this is what keeps them there.
+        using var harness = new Harness();
+        var model = new StudioModel();           // no frame yet, so the placeholder is showing
+        var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
+        using var doc = Open(app);
+        using (doc.RenderToImage(app.Width, app.Height)) { }
+
+        var stage = LocateSurface(doc.Root, 0, 0, StudioApp.PreviewKey)!.Value;
+        var hit = CupriFace.Interaction.HitTesting.HitTest(doc.Root, stage.MidX, stage.MidY);
+
+        Assert.NotNull(hit);
+        var carriesMark = false;
+        for (var n = hit; n is not null; n = n.Parent)
+            if (n.Element?.GetAttribute(StudioApp.MarkAttribute) is not null) { carriesMark = true; break; }
+
+        Assert.True(carriesMark,
+            $"whatever is under the preview centre ({hit!.Element?.GetAttribute("class")}) hides the drag target");
+    }
+
+    [Fact]
     public void A_tap_on_the_preview_is_not_an_annotation()
     {
         using var harness = new Harness();
@@ -460,11 +485,13 @@ public sealed class StudioTests
             HasFrame = true, Marking = true,
             PendingNote = "logo should land before the subtitle",
             Status = "t = 1.2s · swept 37 frames in 310ms",
+            EditingId = "a1",
+            EditingNote = "logo enters too late - land it before the subtitle",
             Annotations =
             [
-                new AnnotationRow { Id = "a1", Note = "logo enters too late", At = "t = 1.2s", Region = "320x180 at (40,600)" },
-                new AnnotationRow { Id = "a2", Note = "subtitle is too dim against the gradient", At = "t = 2.0s", Region = "540x60 at (120,540)" },
-                new AnnotationRow { Id = "a3", Note = "rule draws past the card edge", At = "t = 0.8s", Region = "200x12 at (900,300)", Resolved = true, StatusLabel = "resolved" },
+                new AnnotationRow { Id = "a1", Note = "logo enters too late", At = "t = 1.2s", FrameAt = "frame 36 at 30 fps", Region = "320x180 at (40,600)", Editing = true },
+                new AnnotationRow { Id = "a2", Note = "subtitle is too dim against the gradient", At = "t = 2.0s", FrameAt = "frame 60 at 30 fps", Region = "540x60 at (120,540)" },
+                new AnnotationRow { Id = "a3", Note = "rule draws past the card edge", At = "t = 0.8s", FrameAt = "frame 24 at 30 fps", Region = "200x12 at (900,300)", Resolved = true, StatusLabel = "resolved" },
             ],
         };
         var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
@@ -475,13 +502,15 @@ public sealed class StudioTests
         using var harness = new Harness();
         var composition = harness.WriteComposition("shot.html", ShotComposition);
         using var surface = new PreviewSurface();
-        harness.Cut.Sweep(
-            new SweepSpec { Composition = composition, Width = 858, Height = 482, Times = [1.2] },
-            frame =>
-            {
-                using var bitmap = FrameEncoder.Copy(frame.Image);
-                surface.Publish(SKImage.FromBitmap(bitmap));
-            });
+        var overlay = new OverlayState(1.2,
+        [
+            new OverlayMark(new Annotation { Time = 1.2, X = 0.06, Y = 0.30, W = 0.46, H = 0.30,
+                Note = "logo enters too late" }.AtRate(30), Selected: true),
+        ],
+        Dragging: false, 0, 0, 0, 0);
+
+        using var session = PreviewSession.Open(harness.Cut, composition, 858, 482, new SKColor(0x12, 0x16, 0x1F));
+        surface.Publish(session.RenderAt(1.2, (c, w, h) => AnnotationOverlay.Draw(c, w, h, overlay)));
         doc.Surfaces.Register(StudioApp.PreviewKey, surface);
 
         // Both sizes: the design size, and the halved logical box a 200% display gives - because a

@@ -27,6 +27,7 @@ public sealed partial class StudioController : IDisposable
     private CupriDocument? _document;
     private double _shownTime = double.NaN;
     private string? _shownProject;
+    private int _shownOverlay = -1;
 
     // The render thread and the handshake with it. See PreviewLoop.cs.
     private readonly ManualResetEventSlim _wake = new(false);
@@ -62,6 +63,7 @@ public sealed partial class StudioController : IDisposable
         document.OnAction("data-cut-action", e => { Command(e.Value); return true; });
         document.OnAction("data-cut-goto", e => { GoTo(e.Value); return true; });
         document.OnAction("data-cut-delete", e => { Delete(e.Value); return true; });
+        document.OnAction("data-cut-edit", e => { BeginEdit(e.Value); return true; });
         document.OnAction("data-cut-view", e => { _model.View = e.Value; return true; });
         document.OnAction("data-cut-tab", e => { _model.SettingsTab = e.Value; return true; });
 
@@ -210,6 +212,18 @@ public sealed partial class StudioController : IDisposable
             case "apply-workers":
                 ApplyWorkers();
                 break;
+
+            case "save-note":
+                SaveEdit();
+                break;
+
+            case "cancel-note":
+                _model.EditingId = string.Empty;
+                _model.EditingNote = string.Empty;
+                foreach (var row in _model.Annotations) row.Editing = false;
+                _model.Status = "Edit cancelled.";
+                MarkOverlayChanged();
+                break;
         }
     }
 
@@ -337,11 +351,13 @@ public sealed partial class StudioController : IDisposable
                 _model.DragY = y;
                 _model.DragW = 0;
                 _model.DragH = 0;
+                MarkOverlayChanged();
                 return true;
 
             case PointerPhase.Move when _model.Dragging:
                 _model.DragW = x - _model.DragX;
                 _model.DragH = y - _model.DragY;
+                MarkOverlayChanged();
                 return true;
 
             case PointerPhase.Up when _model.Dragging:
@@ -349,6 +365,7 @@ public sealed partial class StudioController : IDisposable
                 _model.DragW = x - _model.DragX;
                 _model.DragH = y - _model.DragY;
                 CommitRegion();
+                MarkOverlayChanged();
                 return true;
         }
 
@@ -381,7 +398,7 @@ public sealed partial class StudioController : IDisposable
             H = _model.DragH,
             Note = note,
             Author = "reviewer",
-        }.Normalised();
+        }.Normalised().AtRate(ProjectFps());
 
         try
         {
@@ -439,8 +456,15 @@ public sealed partial class StudioController : IDisposable
                 Math.Clamp((y - box.Top) / box.Height, 0, 1));
     }
 
+    private double ProjectFps()
+    {
+        try { return _model.Selected is null ? 0 : _cut.LoadProject(_model.Selected).Render.Fps; }
+        catch { return 0; }
+    }
+
     private void ReloadAnnotations(CutProject project)
     {
+        _model.Marks = [.. project.Annotations];
         _model.Annotations = [.. project.Annotations
             .OrderBy(a => a.Time)
             .Select(a =>
@@ -451,11 +475,77 @@ public sealed partial class StudioController : IDisposable
                     Id = a.Id,
                     Note = a.Note,
                     At = "t = " + a.Time.ToString("0.###", CultureInfo.InvariantCulture) + "s",
+                    FrameAt = a.Fps > 0
+                        ? $"frame {a.Frame} at {a.Fps.ToString("0.##", CultureInfo.InvariantCulture)} fps"
+                        : string.Empty,
                     Region = $"{pw}x{ph} at ({px},{py})",
                     Resolved = a.Status == AnnotationStatus.Resolved,
                     StatusLabel = a.Status == AnnotationStatus.Resolved ? "resolved" : "open",
+                    Editing = a.Id == _model.EditingId,
                 };
             })];
+        MarkOverlayChanged();
+    }
+
+    /// <summary>Tell the render loop the overlay would look different even though the clock has not
+    /// moved - a drag in progress, a note added, an edit saved.</summary>
+    private void MarkOverlayChanged()
+    {
+        _model.OverlayVersion++;
+        _wake.Set();
+    }
+
+    // ---- editing a note ----------------------------------------------------------------------
+
+    /// <summary>Open an annotation's note for rewriting, and jump the preview to it - a note whose
+    /// frame you cannot see is one you are editing blind.</summary>
+    private void BeginEdit(string id)
+    {
+        if (_model.Selected is null) return;
+        var mark = _model.Marks.FirstOrDefault(a => a.Id == id);
+        if (mark is null) return;
+
+        _model.EditingId = id;
+        _model.EditingNote = mark.Note;
+        _model.Playing = false;
+        _model.Time = mark.Time;
+        _model.Status = $"Editing the note at {mark.Time.ToString("0.###", CultureInfo.InvariantCulture)}s.";
+
+        foreach (var row in _model.Annotations) row.Editing = row.Id == id;
+        MarkOverlayChanged();
+    }
+
+    private void SaveEdit()
+    {
+        if (_model.Selected is null || string.IsNullOrEmpty(_model.EditingId)) return;
+
+        var note = _model.EditingNote.Trim();
+        if (note.Length == 0)
+        {
+            _model.Status = "A note cannot be empty - delete the annotation instead.";
+            return;
+        }
+
+        var id = _model.EditingId;
+        try
+        {
+            var project = _cut.EditProject(_model.Selected, p =>
+            {
+                var target = p.Annotations.FirstOrDefault(a => a.Id == id)
+                    ?? throw new InvalidOperationException($"annotation {id} is gone");
+                target.Note = note;
+            });
+
+            _model.EditingId = string.Empty;
+            _model.EditingNote = string.Empty;
+            ReloadAnnotations(project);
+            Refresh();
+            _model.Status = $"Note updated on {id}.";
+        }
+        catch (Exception ex)
+        {
+            _model.Status = "Could not save the note: " + ex.Message;
+        }
     }
 
 

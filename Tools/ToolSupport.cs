@@ -97,7 +97,9 @@ internal static class ToolSupport
         sweepFps = report.SweepFps,
         elapsedMs = Math.Round(report.ElapsedMs, 1),
         msPerFrame = Math.Round(report.ElapsedMs / Math.Max(1, report.StepsRendered), 2),
-        size = $"{report.Width * report.Scale}x{report.Height * report.Scale}",
+        size = report.Present.Size,
+        // Absent unless the layout and the frame differ, which is the ordinary case.
+        scaling = report.Present.Detail(),
         workers = report.Workers,
         pureInTime = report.Purity.PureInTime,
         settled = report.Settled,

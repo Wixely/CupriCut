@@ -373,6 +373,9 @@ public static class Program
         Background = opts.Text("background") is { Length: > 0 } c && SKColor.TryParse(c, out var colour) ? colour : null,
         Alpha = opts.Has("alpha") ? true : null,
         ShowBackground = opts.Has("no-background") ? false : null,
+        OutputWidth = (int)opts.Number("output-width", 0),
+        OutputHeight = (int)opts.Number("output-height", 0),
+        Scaling = opts.Text("scaling") is { Length: > 0 } m ? Presentation.ParseMode(m) : null,
     };
 
     /// <summary>Always say what the requested length actually became. Silence when it was exact,
@@ -497,6 +500,15 @@ public static class Program
         Shared options
           --width N --height N       layout viewport in CSS pixels (default 1280x720)
           --scale N                  pixel multiplier, like a HiDPI display
+          --output-width N           render into a frame of this size instead of the layout
+          --output-height N          size. Name one and the other follows from the aspect.
+                                     Not combinable with --scale: they say the same thing.
+          --scaling <mode>           how the layout becomes that frame when they differ:
+                                     fit (scale the layout to fit, letterboxed - the default,
+                                     and what "4K the way it looks at 1080p" means), responsive
+                                     (lay out at the output size, reflows), fixed (1:1 centred),
+                                     hybrid (zoom the tight axis, reflow the long one),
+                                     adaptive (hybrid above the layout size, responsive below)
           --background '#101014'     frame clear colour
           --alpha                    transparent clear
           --no-background            hide elements marked --cupricut-background, so the same

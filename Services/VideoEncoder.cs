@@ -411,11 +411,12 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
 
         var report = new SweepReport(
             composition.Path,
-            spec.Width > 0 ? spec.Width : composition.Defaults?.Width ?? cut.Options.DefaultWidth,
-            spec.Height > 0 ? spec.Height : composition.Defaults?.Height ?? cut.Options.DefaultHeight,
-            spec.Scale > 0 ? spec.Scale : composition.Defaults?.Scale ?? 1,
             shard!.Frames, shard.Frames, outputFps, spec.Times[^1], shard.ElapsedMs, true, [])
-        { Purity = purity, Workers = shard.Workers };
+        {
+            Purity = purity,
+            Workers = shard.Workers,
+            Present = Presentation.Resolve(spec, composition.Defaults, cut.Options),
+        };
 
         return (videos, report);
     }
@@ -438,8 +439,10 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
     {
         if (targets.Count == 0) throw new ArgumentException("An export needs at least one target.", nameof(targets));
 
-        var (width, height, alpha, sweepFps) = Geometry(composition, spec);
-        var frameBytes = width * height * 4;
+        var (present, alpha, sweepFps) = Geometry(composition, spec);
+        var width = present.OutputWidth;
+        var height = present.OutputHeight;
+        var frameBytes = (int)present.FrameBytes;
 
         var sinks = new List<FfmpegSink>(targets.Count);
         try
@@ -505,16 +508,15 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         }
     }
 
-    /// <summary>The frame size and alpha a spec resolves to. Resolved the same way the sweep
-    /// resolves them - caller, then project, then configuration - because the pipe has to be told
-    /// the exact frame size the sweep will produce.</summary>
-    private (int Width, int Height, bool Alpha, double SweepFps) Geometry(Composition composition, SweepSpec spec)
+    /// <summary>The geometry and alpha a spec resolves to. Asked of <see cref="Presentation"/>
+    /// rather than worked out here: the pipe has to be told the EXACT frame size the sweep will
+    /// produce, and a disagreement is not an error - it is a stream of misaligned bytes that
+    /// encodes to a sheared video.</summary>
+    private (Presentation Present, bool Alpha, double SweepFps) Geometry(Composition composition, SweepSpec spec)
     {
         var defaults = composition.Defaults;
-        var scale = spec.Scale > 0 ? spec.Scale : defaults?.Scale > 0 ? defaults.Scale : 1;
         return (
-            (spec.Width > 0 ? spec.Width : defaults?.Width > 0 ? defaults.Width : cut.Options.DefaultWidth) * scale,
-            (spec.Height > 0 ? spec.Height : defaults?.Height > 0 ? defaults.Height : cut.Options.DefaultHeight) * scale,
+            Presentation.Resolve(spec, defaults, cut.Options),
             spec.Alpha ?? defaults?.Alpha ?? false,
             spec.SweepFps > 0 ? spec.SweepFps : defaults?.Fps > 0 ? defaults.Fps : cut.Options.DefaultFps);
     }
@@ -543,13 +545,13 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         cut.EnsureVideoAllowed();
         composition = Backdrop.Resolve(composition, spec.ShowBackground);
 
-        var (width, height, alpha, _) = Geometry(composition, spec);
+        var (present, alpha, _) = Geometry(composition, spec);
 
         // Premultiplied is what the sweep's surface holds and what Skia produces natively; ffmpeg's
         // rgba is straight alpha, so an unpremultiplied read-back is the one conversion needed. On
         // an opaque render the two are identical, so this costs nothing there.
-        using var readback = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888,
-            alpha ? SKAlphaType.Unpremul : SKAlphaType.Premul));
+        using var readback = new SKBitmap(new SKImageInfo(present.OutputWidth, present.OutputHeight,
+            SKColorType.Rgba8888, alpha ? SKAlphaType.Unpremul : SKAlphaType.Premul));
 
         SweepReport report = null!;
         var frames = 0;

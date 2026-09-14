@@ -109,15 +109,15 @@ public sealed class ParallelRenderer(CupriCutService cut, ILogger log)
 
         var options = cut.Options;
         var defaults = composition.Defaults;
-        var width = spec.Width > 0 ? spec.Width : defaults?.Width > 0 ? defaults.Width : options.DefaultWidth;
-        var height = spec.Height > 0 ? spec.Height : defaults?.Height > 0 ? defaults.Height : options.DefaultHeight;
-        var scale = spec.Scale > 0 ? spec.Scale : defaults?.Scale > 0 ? defaults.Scale : 1;
+
+        // The same geometry the sequential sweep would use, from the same function - these frames
+        // go into the same pipe, and a worker that disagreed about the frame size by one pixel
+        // would shear everything after it.
+        var present = Presentation.Resolve(spec, defaults, options);
         var alpha = spec.Alpha ?? defaults?.Alpha ?? false;
         var clear = alpha ? SKColors.Transparent : spec.Background ?? ParseColour(defaults?.Background) ?? SKColors.White;
 
-        var pixelWidth = width * scale;
-        var pixelHeight = height * scale;
-        var frameBytes = pixelWidth * pixelHeight * 4;
+        var frameBytes = (int)present.FrameBytes;
 
         // Fewer, bigger frames rather than an unbounded appetite for memory.
         var affordable = (int)Math.Max(1, InFlightBudgetBytes / Math.Max(1, (long)frameBytes * BufferPerWorker));
@@ -144,8 +144,8 @@ public sealed class ParallelRenderer(CupriCutService cut, ILogger log)
             {
                 try
                 {
-                    RenderShard(composition, times, worker, workers, width, height, scale, clear,
-                        pixelWidth, pixelHeight, frameBytes, ready, capacity[worker], arrived, abort.Token);
+                    RenderShard(composition, times, worker, workers, present, clear,
+                        frameBytes, ready, capacity[worker], arrived, abort.Token);
                 }
                 catch (OperationCanceledException)
                 {
@@ -215,25 +215,25 @@ public sealed class ParallelRenderer(CupriCutService cut, ILogger log)
 
     private void RenderShard(
         Composition composition, IReadOnlyList<double> times, int worker, int workers,
-        int width, int height, int scale, SKColor clear,
-        int pixelWidth, int pixelHeight, int frameBytes,
+        Presentation present, SKColor clear, int frameBytes,
         ConcurrentDictionary<int, byte[]> ready, SemaphoreSlim capacity, SemaphoreSlim arrived,
         CancellationToken token)
     {
         using var document = cut.OpenDocument(composition);
         document.Animate(0);
-        if (!document.Settle(width, height, TimeSpan.FromSeconds(cut.Options.SettleTimeoutSeconds)))
+        if (!document.Settle((int)Math.Ceiling(present.LogicalWidth), (int)Math.Ceiling(present.LogicalHeight),
+                TimeSpan.FromSeconds(cut.Options.SettleTimeoutSeconds)))
             throw new TimeoutException($"Worker {worker}: '{composition.Path}' still had resources loading after settling.");
 
-        var info = new SKImageInfo(pixelWidth, pixelHeight, SKColorType.Rgba8888, SKAlphaType.Premul);
+        var info = new SKImageInfo(present.OutputWidth, present.OutputHeight, SKColorType.Rgba8888, SKAlphaType.Premul);
         using var surface = SKSurface.Create(info)
-            ?? throw new InvalidOperationException($"Worker {worker}: could not create a {pixelWidth}x{pixelHeight} surface.");
+            ?? throw new InvalidOperationException($"Worker {worker}: could not create a {present.OutputWidth}x{present.OutputHeight} surface.");
         var canvas = surface.Canvas;
 
         // ffmpeg's rawvideo rgba is STRAIGHT alpha; Skia paints premultiplied. On an opaque render
         // the two are identical, so this costs nothing there.
-        using var readback = new SKBitmap(new SKImageInfo(pixelWidth, pixelHeight, SKColorType.Rgba8888,
-            clear.Alpha == 0 ? SKAlphaType.Unpremul : SKAlphaType.Premul));
+        using var readback = new SKBitmap(new SKImageInfo(present.OutputWidth, present.OutputHeight,
+            SKColorType.Rgba8888, clear.Alpha == 0 ? SKAlphaType.Unpremul : SKAlphaType.Premul));
 
         // Interleaved, not blocked: a composition whose later frames are heavier would otherwise
         // leave one worker finishing alone while the rest idle.
@@ -244,9 +244,8 @@ public sealed class ParallelRenderer(CupriCutService cut, ILogger log)
 
             document.Animate(times[i]);
             canvas.Clear(clear);
-            canvas.Save();
-            if (scale != 1) canvas.Scale(scale);
-            document.Render(canvas, width, height);
+            present.Apply(canvas);
+            document.Render(canvas, present.LogicalWidth, present.LogicalHeight);
             canvas.Restore();
             canvas.Flush();
 

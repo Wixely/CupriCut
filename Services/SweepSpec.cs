@@ -38,6 +38,17 @@ public sealed record SweepSpec
     /// own choice, or showing them.</summary>
     public bool? ShowBackground { get; init; }
 
+    /// <summary>The frame to render INTO, when it differs from the layout size above. Zero means
+    /// unset: the project's own output size, or <see cref="Width"/> times <see cref="Scale"/>.
+    /// Naming one of the two is enough.</summary>
+    public int OutputWidth { get; init; }
+
+    public int OutputHeight { get; init; }
+
+    /// <summary>How the design becomes the output frame. Null is unset: the project's own choice,
+    /// or <see cref="ScalingMode.Fit"/>.</summary>
+    public ScalingMode? Scaling { get; init; }
+
     /// <summary>Sweep every intermediate frame even when the composition does not need it. The
     /// analysis is conservative, so this is for proving a difference rather than for safety.</summary>
     public bool ForceSweep { get; init; }
@@ -50,9 +61,6 @@ public sealed record SweptFrame(int Index, double Time, SKImage Image);
 /// <summary>What a sweep cost and what it found, for the text half of a tool's answer.</summary>
 public sealed record SweepReport(
     string Composition,
-    int Width,
-    int Height,
-    int Scale,
     int StepsRendered,
     int FramesKept,
     double SweepFps,
@@ -63,6 +71,19 @@ public sealed record SweepReport(
 {
     /// <summary>Whether the composition needed sweeping at all.</summary>
     public PurityVerdict Purity { get; init; } = PurityVerdict.Pure;
+
+    /// <summary>The geometry this was rendered with - the frame size, the layout size and the
+    /// transform between them. Carried rather than re-derived, so what a tool reports is what the
+    /// renderer actually did.</summary>
+    public required Presentation Present { get; init; }
+
+    /// <summary>The layout viewport, in CSS pixels.</summary>
+    public float Width => Present.LogicalWidth;
+
+    public float Height => Present.LogicalHeight;
+
+    /// <summary>What the canvas was scaled by.</summary>
+    public float Scale => Present.Scale;
 
     /// <summary>How many threads rendered it. One unless the frames were independent and there were
     /// enough of them to be worth sharding.</summary>

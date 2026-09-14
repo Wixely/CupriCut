@@ -281,9 +281,11 @@ public sealed class CupriCutService
 
         // Precedence, everywhere: what the caller asked for, then what the project remembers, then
         // the server's configured default. A project is a source of defaults, never an override.
-        var width = spec.Width > 0 ? spec.Width : defaults?.Width > 0 ? defaults.Width : options.DefaultWidth;
-        var height = spec.Height > 0 ? spec.Height : defaults?.Height > 0 ? defaults.Height : options.DefaultHeight;
-        var scale = spec.Scale > 0 ? spec.Scale : defaults?.Scale > 0 ? defaults.Scale : 1;
+        // The geometry is worked out in ONE place - see Presentation - because the encoder has to
+        // agree with this exactly, and it used to derive the same numbers for itself.
+        var present = Presentation.Resolve(spec, defaults, options);
+        var width = present.LogicalWidth;
+        var height = present.LogicalHeight;
         var fps = spec.SweepFps > 0 ? spec.SweepFps : defaults?.Fps > 0 ? defaults.Fps : options.DefaultFps;
         var alpha = spec.Alpha ?? defaults?.Alpha ?? false;
 
@@ -291,10 +293,9 @@ public sealed class CupriCutService
         if (spec.Times.Any(t => t < 0 || double.IsNaN(t) || double.IsInfinity(t)))
             throw new ArgumentException("Times must be finite and at or after zero.", nameof(spec));
 
-        var pixels = (long)width * scale * height * scale;
-        if (pixels > options.MaxPixels)
+        if (present.Pixels > options.MaxPixels)
             throw new CutPolicyException(
-                $"{width * scale}x{height * scale} is {pixels:N0} pixels per frame, over Cut:MaxPixels ({options.MaxPixels:N0}).");
+                $"{present.OutputWidth}x{present.OutputHeight} is {present.Pixels:N0} pixels per frame, over Cut:MaxPixels ({options.MaxPixels:N0}).");
 
         // The founding measurement was that a frame depends on the frames before it - but only for a
         // composition that carries state between Animate calls. @keyframes does not, and measured on
@@ -331,15 +332,16 @@ public sealed class CupriCutService
             // Frame 0's clock before anything is fetched: Settle renders, and a render is what asks
             // for an image in the first place.
             doc.Animate(0);
-            var settled = doc.Settle(width, height, TimeSpan.FromSeconds(options.SettleTimeoutSeconds));
+            var settled = doc.Settle((int)Math.Ceiling(width), (int)Math.Ceiling(height),
+                TimeSpan.FromSeconds(options.SettleTimeoutSeconds));
             if (!settled)
                 throw new TimeoutException(
                     $"'{composition.Path}' still had {doc.PendingLoads} resource load(s) in flight after {options.SettleTimeoutSeconds}s. " +
                     "A frame rendered before its images arrive is wrong and deterministic, which is worse than wrong and flaky.");
 
-            var info = new SKImageInfo(width * scale, height * scale, SKColorType.Rgba8888, SKAlphaType.Premul);
+            var info = new SKImageInfo(present.OutputWidth, present.OutputHeight, SKColorType.Rgba8888, SKAlphaType.Premul);
             using var surface = SKSurface.Create(info)
-                ?? throw new InvalidOperationException($"Could not create a {width * scale}x{height * scale} render surface.");
+                ?? throw new InvalidOperationException($"Could not create a {present.OutputWidth}x{present.OutputHeight} render surface.");
             var canvas = surface.Canvas;
 
             var kept = 0;
@@ -347,8 +349,7 @@ public sealed class CupriCutService
             {
                 doc.Animate(t);
                 canvas.Clear(clear);
-                canvas.Save();
-                if (scale != 1) canvas.Scale(scale);
+                present.Apply(canvas);
                 doc.Render(canvas, width, height);
                 canvas.Restore();
                 canvas.Flush();
@@ -360,15 +361,15 @@ public sealed class CupriCutService
 
             sw.Stop();
             var report = new SweepReport(
-                composition.Path, width, height, scale, steps.Length, kept, fps,
+                composition.Path, steps.Length, kept, fps,
                 steps[^1], sw.Elapsed.TotalMilliseconds, settled,
                 [.. doc.FontReport.Problems.Select(p => $"{p.Family}: {p.Reason}")])
-            { Purity = purity };
+            { Purity = purity, Present = present };
 
             _log.LogInformation(
-                "{Mode} {Steps} frames of {Composition} at {Width}x{Height}x{Scale} in {Ms:0}ms, kept {Kept}",
+                "{Mode} {Steps} frames of {Composition} at {Geometry} in {Ms:0}ms, kept {Kept}",
                 purity.PureInTime ? "Rendered" : "Swept",
-                report.StepsRendered, Path.GetFileName(report.Composition), width, height, scale, report.ElapsedMs, kept);
+                report.StepsRendered, Path.GetFileName(report.Composition), present.Describe(), report.ElapsedMs, kept);
             return report;
         }
         finally

@@ -249,6 +249,31 @@ nothing was drawn; the mask is the alpha alone. That is the colour-and-matte pai
 Asking for a mask *is* asking for a transparent render, so it is inferred rather than demanded
 twice. An explicit `alpha:false` beside one is a contradiction, and is refused.
 
+### Render it bigger without re-authoring it
+
+Both of these are 3840×2160 from the same 1280×720 composition. The top one is the default;
+the bottom is what "just render it at 4K" actually does:
+
+![Scaled against reflowed at 4K](docs/scaling.png)
+
+Laying a 1280-wide design out in a 3840-wide viewport **reflows** it — the lower third stays 584 CSS
+pixels and becomes a badge in the corner. Scaling keeps the composition and makes it bigger. So an
+output size and a scaling mode are project data:
+
+```
+cupricut frame --composition lower-third.cut.json --output-width 3840
+```
+
+Name one side and the other follows from the design's aspect. Five modes: **`fit`** (the default —
+scale the design to fit, letterboxed if the aspects differ), `responsive` (lay out at the output
+size and reflow), `fixed` (1:1, centred), `hybrid` (zoom the tight axis, reflow the long one) and
+`adaptive` (hybrid above the design size, responsive below). When the aspects match they agree; the
+mode only decides what to do with the surplus.
+
+`fit` is ours; the other four are the engine's `PresentInfo` strategies, used rather than
+re-derived. The engine has no letterbox, deliberately — a window host reflows the loose axis
+instead, because bars in an application are a bug. A frame of video is not a window.
+
 ### The backdrop is a flag, not a second file
 
 The same composition is wanted two ways: over its own background for review, where someone has to

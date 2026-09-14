@@ -134,9 +134,27 @@ built on, so it goes first.
 
     Asking for a mask IS asking for a transparent render, so alpha is inferred rather than demanded
     twice — but an explicit `alpha:false` beside one is a contradiction and is still refused.
-21. **Resolution and scaling in the project.** Width, height and the `PresentInfo` mode
-    (responsive / fixed / hybrid / adaptive) stored as project data, so "render this at 4K the way
-    it looks at 1080p" is a setting rather than a re-authoring.
+21. ~~**Resolution and scaling in the project.**~~ **Done.** An output size and a scaling mode
+    stored as project data, so "render this at 4K the way it looks at 1080p" is a setting rather
+    than a re-authoring. The difference is not cosmetic: laying a 1280x720 design out in a
+    3840-wide viewport REFLOWS it, so a 584px lower third stays 584 physical pixels and becomes a
+    badge in the corner of a huge frame. Measured in pixels — a card that covers a quarter of the
+    frame scaled covers a sixteenth reflowed.
+
+    Five modes. Four are the engine's own `PresentInfo` strategies, used rather than re-derived:
+    `responsive`, `fixed`, `hybrid`, `adaptive`. The fifth, **`fit`**, is CupriCut's and is the
+    default: the design scaled uniformly until it fits, centred, letterboxed if the aspects differ.
+    The engine has no equivalent on purpose — a WINDOW host never letterboxes, it reflows the loose
+    axis, because bars in an application are a bug. A frame of video is not a window: its size is
+    fixed by the format, the composition's aspect is a decision someone made, and bars are the
+    correct way to hold both. When the aspects match, which is the ordinary case, `fit`, `hybrid`
+    and `adaptive` agree exactly.
+
+    The geometry moved into one type while this was done. The sweep, the parallel renderer and the
+    encoder each worked the frame size out for themselves from the same three fallbacks — and the
+    encoder has to agree with the renderer EXACTLY, because it tells ffmpeg the frame size up front
+    and a disagreement is not an error but a pipe full of misaligned bytes. That is the same
+    triplication that had already produced the silent alpha bug in `export`; it is one function now.
 
 **The window**
 
@@ -183,11 +201,72 @@ built on, so it goes first.
     a Chrome pipeline cannot do at all. Replay from zero on every seek — correct, and cheap at
     179 fps. Caching per `t` is an optimisation for later, not now.
 
+## Milestone 4 — cue the animation off the audio (4–5 days)
+
+**The idea.** Point CupriCut at an audio file and let the motion be driven by what is in it — hits
+on the beat, a title that lands on the downbeat, a lower third that appears when the speaker starts.
+Timing an animation to a track by hand is tedious and inexact; the track already knows where its
+events are.
+
+25. **`analyse_audio` — the cues as data.** ffmpeg is already a dependency and already does the
+    hard part: decode to mono PCM at a known rate and the envelope falls out. Compute per-frame RMS
+    and spectral flux in-process (no new dependency, and no black box whose version changes the
+    answer), and derive:
+    - **onsets** — a flux peak above an adaptive threshold. Where a hit is.
+    - **beats and a tempo** — autocorrelation of the onset envelope. Report the confidence, because
+      a spoken-word track has no beat and pretending otherwise is worse than saying so.
+    - **silence boundaries** — where speech or music starts and stops, which is what a lower third
+      actually wants to key off.
+    - **the loudness envelope itself**, decimated to the project's frame rate, for anything that
+      should breathe with the track rather than snap to it.
+
+    Every cue comes back with a time, a kind and a strength in 0–1, snapped to the nearest frame
+    with the delta reported — the same rule `ClipPlanner` already applies to clip
+    lengths, for the same reason.
+
+26. **Cues live in the project.** Stored in `.cut.json` alongside a hash of the audio, not
+    recomputed at render time. Two reasons. A render must be reproducible on a machine that has a
+    different ffmpeg, and analysis is exactly the kind of thing that drifts between versions. And
+    an agent that has read the cues once should not pay to read them again on every iteration —
+    the loop is look, adjust, look, and the cues do not change between adjustments.
+
+    The hash is what catches the audio being swapped underneath a project that was timed to it.
+
+27. **Two ways to use them, and the cheap one first.**
+
+    **The agent writes the keyframes.** `analyse_audio` hands back a list of times; the agent emits
+    `@keyframes` and `animation-delay` at those times. This needs no engine change, no new binding
+    vocabulary, and nothing in the renderer — and it plays to what is actually good at authoring
+    motion. Build this one first and find out whether the second is needed at all.
+
+    **A cue track binds directly.** `data-cut-cue="beat"` / `data-cut-cue-index="4"` resolved to a
+    time at build, feeding the same `animation-delay` machinery Milestone 2 uses for
+    `data-start`. Worth it only if the round trip through the agent turns out to be the slow part.
+
+28. **Cues from the FRAMES too.** The same shape of answer, read off a video the composition is
+    meant to sit over: scene changes (`ffmpeg`'s `scdet`), and a per-frame motion and luminance
+    measure. What this is for is the opposite problem — not timing motion to music, but timing a
+    caption so it does not land on a cut, or picking the calm part of a shot to put text on. Same
+    cue record, different source.
+
+29. **Audio on the way out.** `export` muxes the track into the clip — `-i audio -c:a aac -shortest`,
+    and a `--no-audio` for the matte half of a keying pair, which must not carry it. This is the
+    part of Phase 2's "audio mux here" that belongs with the rest of the audio work rather than
+    on its own.
+
+**What has to be decided before the code.**
+
+| | |
+|---|---|
+| **Where the audio lives** | A project inlines its assets as `data:` URIs, and that is right for a logo and wrong for four minutes of WAV. Likely: reference by path with a hash, and inline only under a size cap — but that breaks "one file you can hand to another machine", which was a founding property. Decide it, do not drift into it. |
+| **Whether the analysis is a tool or a service** | `analyse_audio` as an MCP tool is obvious. It is less obvious whether the CLI needs it, or whether the window should show the envelope under the scrub bar — which is the thing that would make timing by hand pleasant, and is a chunk of work on its own. |
+| **Beat detection honesty** | Autocorrelation over an onset envelope is a real method and a mediocre one. It will be confidently wrong on rubato, on half/double tempo, and on anything without a drum. The confidence number is not decoration — an agent has to be able to tell "beats at 128 BPM" from "no usable beat here". |
+
 ## Phase 2 — deferred, deliberately
 
-16. Video seek-to-time in the engine (a renderer needs *the frame at t*, not playback), WOFF 2 in
-    the engine (a real decoder — Brotli plus `glyf`/`loca` reconstruction — not a decompression
-    call), audio mux here.
+16. Video seek-to-time in the engine (a renderer needs *the frame at t*, not playback), and WOFF 2
+    in the engine (a real decoder — Brotli plus `glyf`/`loca` reconstruction — not a decompression
+    call). Audio mux was here; it has moved to Milestone 4, where the rest of the audio work is.
 
 ---
 

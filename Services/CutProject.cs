@@ -118,6 +118,17 @@ public sealed class RenderSettings
 
     /// <summary>Preferred codec name for <c>render_video</c>.</summary>
     public string? Codec { get; set; }
+
+    /// <summary>The frame this renders to, when it differs from the design size above. Zero means
+    /// the design size times <see cref="Scale"/>, which is what CupriCut always did. Naming one of
+    /// the two is enough - the other follows from the design's aspect.</summary>
+    public int OutputWidth { get; set; }
+
+    public int OutputHeight { get; set; }
+
+    /// <summary>How the design becomes the output frame when the two differ. Only consulted when an
+    /// output size is set, because with no output size there is nothing to reconcile.</summary>
+    public ScalingMode Scaling { get; set; } = ScalingMode.Fit;
 }
 
 /// <summary>Everything about the project that is not the render itself.</summary>

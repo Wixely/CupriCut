@@ -62,6 +62,12 @@ public sealed class ParallelRenderer(CupriCutService cut, ILogger log)
     /// </summary>
     public static int DefaultWorkers => Math.Clamp(Environment.ProcessorCount / 2, 1, 8);
 
+    /// <summary>What the caller asked for, else what calibration measured, else the guess.</summary>
+    public static int Resolve(int requested, int configured) =>
+        requested > 0 ? Math.Clamp(requested, 1, Environment.ProcessorCount)
+        : configured > 0 ? Math.Clamp(configured, 1, Environment.ProcessorCount)
+        : DefaultWorkers;
+
     /// <summary>
     /// Frames a worker may run ahead by, <b>counted per worker rather than shared</b>.
     ///
@@ -99,7 +105,7 @@ public sealed class ParallelRenderer(CupriCutService cut, ILogger log)
                 "This composition is not pure in t, so its frames depend on the frames before them and cannot be " +
                 $"rendered out of order. {purity.Summary}");
 
-        workers = workers <= 0 ? DefaultWorkers : Math.Clamp(workers, 1, Environment.ProcessorCount);
+        workers = Resolve(workers, cut.Options.RenderWorkers);
 
         var options = cut.Options;
         var defaults = composition.Defaults;

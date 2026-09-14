@@ -96,6 +96,17 @@ public sealed class CutOptions
     /// agent's context.</summary>
     public int MaxInlineImageBytes { get; set; } = 4_000_000;
 
+    /// <summary>
+    /// Render threads for a parallel export. <b>Zero means the built-in guess</b>, which is half the
+    /// logical core count.
+    ///
+    /// <para>Worth setting from <c>calibrate</c> rather than reasoning about: measured on a
+    /// 12-logical-core machine the best count was 6 and the worst was 12, and the processor count
+    /// is what a reasonable person would have picked. The right number depends on physical cores,
+    /// cache and frame size, none of which are portably knowable.</para>
+    /// </summary>
+    public int RenderWorkers { get; set; }
+
     /// <summary>Seconds an ffmpeg encode may run before it is killed.</summary>
     public int FfmpegTimeoutSeconds { get; set; } = 600;
 }

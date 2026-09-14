@@ -201,6 +201,119 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         return codec;
     }
 
+    /// <summary>
+    /// Encode two synthetic frames with the <b>real</b> arguments for this codec and mode, and say
+    /// what came out.
+    ///
+    /// <para>The point is to test the command line CupriCut actually issues rather than a
+    /// simplified stand-in — a capability that works in isolation and fails in context would be
+    /// worse than no check at all. The frames are 64x64 and half transparent, so an alpha channel
+    /// that survives has something in it to survive.</para>
+    /// </summary>
+    /// <param name="pixelFormat">What ffprobe says the finished file is, when it got that far.</param>
+    public (bool Ok, string Detail) TryTinyEncode(VideoCodec codec, bool alpha, AlphaMode alphaMode, out string? pixelFormat)
+    {
+        pixelFormat = null;
+        const int Size = 64;
+        const int Frames = 2;
+
+        string? path = null;
+        try
+        {
+            path = Path.Combine(Path.GetTempPath(), $"cupricut-cal-{Guid.NewGuid():N}"[..30] + codec.Extension);
+
+            var args = BuildArguments(Size, Size, Frames, Frames, codec, path, alpha, alphaMode);
+            using var process = new Process
+            {
+                StartInfo = new ProcessStartInfo(cut.Options.FfmpegPath, args)
+                {
+                    RedirectStandardInput = true,
+                    RedirectStandardError = true,
+                    RedirectStandardOutput = true,
+                    UseShellExecute = false,
+                    CreateNoWindow = true,
+                },
+            };
+
+            var stderr = new StringBuilder();
+            process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
+            process.Start();
+            process.BeginErrorReadLine();
+            process.BeginOutputReadLine();
+
+            // Left half opaque, right half transparent - so a surviving alpha channel is visibly
+            // carrying something rather than merely present.
+            var frame = new byte[Size * Size * 4];
+            for (var y = 0; y < Size; y++)
+                for (var x = 0; x < Size; x++)
+                {
+                    var i = (y * Size + x) * 4;
+                    frame[i] = 0xD9;
+                    frame[i + 1] = 0x64;
+                    frame[i + 2] = 0x2A;
+                    frame[i + 3] = x < Size / 2 ? (byte)0xFF : (byte)0x00;
+                }
+
+            try
+            {
+                for (var f = 0; f < Frames; f++) process.StandardInput.BaseStream.Write(frame);
+                process.StandardInput.BaseStream.Flush();
+            }
+            catch (IOException)
+            {
+                // ffmpeg rejected the arguments and died before reading; its stderr is the answer.
+            }
+
+            process.StandardInput.Close();
+            if (!process.WaitForExit(TimeSpan.FromSeconds(30)))
+            {
+                KillQuietly(process);
+                return (false, "timed out");
+            }
+
+            if (process.ExitCode != 0) return (false, FirstProblem(stderr));
+            if (!File.Exists(path)) return (false, "wrote no file");
+
+            pixelFormat = PixelFormatOf(path);
+            return (true, pixelFormat ?? "encoded");
+        }
+        catch (Exception ex)
+        {
+            return (false, ex.Message.Split('\n')[0]);
+        }
+        finally
+        {
+            try { if (path is not null && File.Exists(path)) File.Delete(path); }
+            catch { /* a stray temp file is not worth failing a check over */ }
+        }
+    }
+
+    /// <summary>ffprobe's version line, or null when it is not beside ffmpeg.</summary>
+    public string? FfprobeVersion()
+    {
+        try
+        {
+            var output = Run(FfprobePath(), "-hide_banner -version", TimeSpan.FromSeconds(10));
+            return output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+        }
+        catch
+        {
+            return null;
+        }
+    }
+
+    /// <summary>The most useful line of an ffmpeg failure - the last one is usually the cause,
+    /// the rest is banner.</summary>
+    private static string FirstProblem(StringBuilder stderr)
+    {
+        var lines = stderr.ToString()
+            .Split('\n', StringSplitOptions.RemoveEmptyEntries)
+            .Select(l => l.Trim())
+            .Where(l => l.Length > 0)
+            .ToArray();
+        return lines.Length == 0 ? "failed with no message" : lines[^1];
+    }
+
     /// <summary>Is ffmpeg there, and what can it encode?</summary>
     public FfmpegInfo Probe()
     {
@@ -239,7 +352,7 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         cut.EnsureVideoAllowed();
 
         var purity = Purity.Analyse(composition);
-        var wanted = workers <= 0 ? ParallelRenderer.DefaultWorkers : Math.Clamp(workers, 1, Environment.ProcessorCount);
+        var wanted = ParallelRenderer.Resolve(workers, cut.Options.RenderWorkers);
 
         if (!purity.PureInTime || spec.Times.Count < ParallelRenderer.WorthSharding || wanted == 1)
             return Encode(composition, spec, outputPath, codec, outputFps, alphaMode);

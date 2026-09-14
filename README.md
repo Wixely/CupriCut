@@ -92,6 +92,7 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `render_video` | raw RGBA into ffmpeg; `alpha` gives a transparent clear, embedded or as a matte | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
+| `calibrate` | what this ffmpeg can really do, and the fastest render parallelism | **in** |
 | `save_project` / `load_project` / `update_project` / `list_projects` / `attach_asset` | the work, in a file a later run can reopen | **in** |
 | `inspect` | the timeline: tracks, elements and their windows, images referenced, duration | Milestone 2 |
 | `lint` | the determinism verdict, and whether the composition is pure in `t` | Milestone 2 |
@@ -226,6 +227,28 @@ cupricut video --composition logo.html --alpha --alpha-mode matteBelow --codec h
 #  → 1280x1440 h264, yuv420p. Recompose:
 #    ffmpeg -i out.mp4 -filter_complex #      "[0:v]crop=1280:720:0:0[c];[0:v]crop=1280:720:0:720,format=gray[a];[c][a]alphamerge" out.png
 ```
+
+### `calibrate` — what this machine actually does
+
+```
+$ cupricut calibrate
+Embedded alpha
+  [ ] vp9  DROPPED alpha - wrote yuv420p
+      -> This build accepts the alpha pixel format and does not write it.
+         Use a codec that passed, or alphaMode matteBelow / matteRight.
+1 of 19 checks failed (3109 ms). Pass all:true to see the rest.
+
+Best render parallelism: 8 workers.
+```
+
+It encodes a two-frame clip per codec and per alpha mode **with the real arguments CupriCut
+issues**, then probes what came out — and times a short render at every plausible worker count.
+Failures only by default; `--all` for the whole table, `--apply` to write the measured worker count
+into `CupriCut.Local.json`.
+
+Both things it checks exist because they were assumed and were false: vp9 accepts `yuva420p` and
+writes `yuv420p`, and `Environment.ProcessorCount` was the *slowest* parallelism on this machine.
+Neither was discoverable by reading anything.
 
 **The result is verified, not assumed.** Choosing an alpha-capable codec is not the same as getting
 alpha out the other end: measured on ffmpeg N-91454, libvpx-vp9 accepts `-pix_fmt yuva420p`, reports

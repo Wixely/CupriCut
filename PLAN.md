@@ -96,14 +96,17 @@ built on, so it goes first.
 
 **Backend**
 
-16. **Parallel video.** A 10-minute clip at 120 fps is 72,000 frames and no amount of clever `t`
+16. ~~**Parallel video.**~~ **Done** — 5.2x on the render, 15% on a clip, because the encoder is
+    now the floor. See the commit for the two designs that measured slower and were reverted.
+    Originally: A 10-minute clip at 120 fps is 72,000 frames and no amount of clever `t`
     handling changes that — but a composition that is pure in `t` has independent frames, so they
     shard across cores. Render to a temp directory and mux, or feed an ordered queue straight into
     ffmpeg; the first is simpler and the disk is cheap. ~12x on this machine.
-17. **Calibrate.** Actually encode a two-frame clip per capability and report what came back, as a
-    table of ticks and crosses, errors-only by default. This exists because `libvpx-vp9` on
-    ffmpeg N-91454 accepts `-pix_fmt yuva420p`, reports success, and writes `yuv420p`: what a codec
-    *claims* and what a build *does* are different questions, and only the second one matters.
+17. ~~**Calibrate.**~~ **Done.** Encodes a two-frame clip per capability with the real arguments and
+    probes the result, and times the render at every plausible worker count. Errors-only by default.
+    It found both of the things it was built for without being told: vp9 drops alpha on this ffmpeg,
+    and the best parallelism here is 8 — not the 12 `ProcessorCount` suggested, nor the 6 the
+    built-in guess used. `--apply` writes the measured count to `CupriCut.Local.json`.
 18. **Special elements.** `--cupricut-background` marks an element as the backdrop, so it can be
     shown or hidden per render: the same composition gives an opaque video for review and a
     transparent one for the edit. Recognised, reported by `inspect`, and toggled per render.

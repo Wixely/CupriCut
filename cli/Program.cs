@@ -37,6 +37,7 @@ public static class Program
                 "frames" => Frames(cut, opts),
                 "video" => Video(cut, encoder, opts),
                 "probe" => Probe(cut, encoder),
+                "calibrate" => Calibrate(cut, encoder, opts),
                 "fonts" => Fonts(cut, opts),
                 "projects" => Projects(cut),
                 "project" => Project(cut, opts),
@@ -178,6 +179,63 @@ public static class Program
             ? $"ffmpeg        {ffmpeg.Version}\ncodecs        {string.Join(", ", ffmpeg.Encoders)}"
             : $"ffmpeg        NOT FOUND at '{ffmpeg.Path}' - {ffmpeg.Error}");
         return ffmpeg.Available ? 0 : 2;
+    }
+
+    private static int Calibrate(CupriCutService cut, VideoEncoder encoder, CommandLine opts)
+    {
+        var calibrator = new Calibrator(cut, encoder, cut.RenderLog);
+        var report = calibrator.Run(tuneWorkers: !opts.Has("no-benchmark"));
+
+        Console.WriteLine(report.ToTable(errorsOnly: !opts.Has("all")));
+
+        if (calibrator.BestWorkers is { } best)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"Best render parallelism: {best} workers.");
+
+            if (opts.Has("apply"))
+            {
+                var written = ApplyWorkers(cut.ContentRoot, best);
+                Console.WriteLine($"  Written to {written} as Cut:RenderWorkers.");
+            }
+            else if (best != cut.Options.RenderWorkers)
+            {
+                Console.WriteLine($"  Re-run with --apply to write it, or set Cut:RenderWorkers to {best} yourself.");
+            }
+        }
+
+        // Non-zero when something failed, so a CI step can gate on it.
+        return report.AllPassed ? 0 : 4;
+    }
+
+    /// <summary>
+    /// Persist the measured worker count into the LOCAL config layer.
+    ///
+    /// <para>CupriCut.Local.json rather than CupriCut.json: the measurement belongs to this machine,
+    /// not to the repository, and the local file is already the documented per-machine override and
+    /// already ignored by git. Only the one key is touched, so anything else there survives.</para>
+    ///
+    /// <para>Deliberately CLI-only. The MCP tool reports the number and does not write it - the
+    /// three roots say what an agent may write to, and the application's own configuration is not
+    /// one of them.</para>
+    /// </summary>
+    private static string ApplyWorkers(string contentRoot, int workers)
+    {
+        var path = Path.Combine(contentRoot, "CupriCut.Local.json");
+
+        var root = File.Exists(path)
+            ? System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? []
+            : [];
+
+        if (root["Cut"] is not System.Text.Json.Nodes.JsonObject cutSection)
+        {
+            cutSection = [];
+            root["Cut"] = cutSection;
+        }
+        cutSection["RenderWorkers"] = workers;
+
+        File.WriteAllText(path, root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
+        return path;
     }
 
     private static int Fonts(CupriCutService cut, CommandLine opts)
@@ -364,6 +422,7 @@ public static class Program
           cupricut video  --composition <file> [--duration 3 | --to 3] [--fps 30]
                                                [--codec h264|h265|vp9|prores|gif] [--out clip]
           cupricut probe
+          cupricut calibrate [--all] [--no-benchmark] [--apply]
           cupricut fonts  [--composition <file>]
           cupricut projects
           cupricut project --name <project>

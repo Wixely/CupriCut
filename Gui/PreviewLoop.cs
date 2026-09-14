@@ -54,6 +54,10 @@ public sealed partial class StudioController
                 _wake.Reset();
                 if (_stopping.IsCancellationRequested) break;
 
+                // Ticking is how a render-on-demand host is told to keep painting rather than
+                // waiting to be nudged per frame. True exactly while the clock is running.
+                _surface.Ticking = _model.Playing;
+
                 if (_model.Playing) Advance();
 
                 var wanted = _model.Selected;
@@ -61,6 +65,8 @@ public sealed partial class StudioController
                 {
                     session?.Dispose();
                     session = null;
+                    _surface.Clear();
+                    _model.HasFrame = false;
                     continue;
                 }
 

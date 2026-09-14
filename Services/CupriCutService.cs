@@ -300,7 +300,9 @@ public sealed class CupriCutService
         // composition that carries state between Animate calls. @keyframes does not, and measured on
         // this repository's worked compositions a direct render is byte-identical to a swept one and
         // 10-45x faster. So sweep when it is needed and not otherwise.
-        var composition = LoadedComposition(compositionOrNull, spec);
+        // Before the purity analysis and before anything opens a document: hiding the backdrop is
+        // a change to the markup, and everything downstream should be looking at one composition.
+        var composition = Backdrop.Resolve(LoadedComposition(compositionOrNull, spec), spec.ShowBackground);
         var purity = spec.ForceSweep
             ? new PurityVerdict(false, ["the caller asked for a full sweep"])
             : Purity.Analyse(composition);

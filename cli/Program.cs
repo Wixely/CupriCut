@@ -36,6 +36,8 @@ public static class Program
                 "sheet" => Sheet(cut, opts),
                 "frames" => Frames(cut, opts),
                 "video" => Video(cut, encoder, opts),
+                "export" => Export(cut, encoder, opts),
+                "formats" => Formats(),
                 "probe" => Probe(cut, encoder),
                 "calibrate" => Calibrate(cut, encoder, opts),
                 "fonts" => Fonts(cut, opts),
@@ -125,6 +127,64 @@ public static class Program
         Console.WriteLine($"{directory}  ({written.Length} PNGs)");
         ReportTiming(plan);
         Report(report);
+        return 0;
+    }
+
+    /// <summary>One render, every format asked for. The second format is very nearly free - a
+    /// frame written to four pipes costs no more to produce than a frame written to one - so this
+    /// is the verb to reach for whenever more than one file is wanted.</summary>
+    private static int Export(CupriCutService cut, VideoEncoder encoder, CommandLine opts)
+    {
+        cut.EnsureVideoAllowed();
+        var loaded = cut.LoadComposition(opts.Require("composition"));
+        var defaults = loaded.Defaults;
+        var fps = opts.Number("fps", defaults?.Fps ?? cut.Options.DefaultFps);
+        var from = opts.Number("from", 0);
+        var alpha = opts.Has("alpha") || (defaults?.Alpha ?? false);
+
+        if (opts.Has("duration") && opts.Has("to"))
+            throw new ArgumentException("Give either --duration or --to, not both - they differ by one frame.");
+
+        double[] times;
+        ClipPlan? plan = null;
+        if (opts.Has("to")) times = Range(from, opts.Number("to", 3), fps);
+        else (times, plan) = ClipPlanner.Plan(from, opts.Number("duration", defaults?.Duration ?? 3), fps);
+
+        var wanted = (opts.Text("formats") ?? "mp4")
+            .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
+        var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
+        Directory.CreateDirectory(directory);
+
+        var export = ExportFormats.Plan(wanted, opts.Has("alpha") ? true : null, defaults?.Alpha ?? false,
+            name => Path.Combine(directory, name));
+
+        // export.Alpha rather than whatever Spec worked out from --alpha: the targets were built
+        // against this value, and a render that disagreed would write a "mask" that was not one.
+        var (videos, report) = encoder.ExportFastest(
+            loaded, Spec(opts, times, fps) with { Alpha = export.Alpha },
+            export.Targets, fps, (int)opts.Number("workers", 0), cut.RenderLog);
+
+        Console.WriteLine($"{directory}  (alpha {(export.Alpha ? "on" : "off")})");
+        for (var i = 0; i < export.Targets.Count; i++)
+        {
+            var video = videos[i];
+            Console.WriteLine($"  {export.Targets[i].Name,-7} {Path.GetFileName(video.Path),-24} {video.Bytes,12:N0} bytes  {video.PixelFormat}");
+            if (video.Note is { Length: > 0 }) Console.WriteLine($"          {video.Note}");
+        }
+        ReportTiming(plan);
+        Report(report);
+        return 0;
+    }
+
+    private static int Formats()
+    {
+        foreach (var format in ExportFormats.Describe())
+        {
+            var name = format.GetType().GetProperty("format")!.GetValue(format);
+            var what = format.GetType().GetProperty("what")!.GetValue(format);
+            Console.WriteLine($"  {name,-7} {what}");
+        }
         return 0;
     }
 
@@ -312,6 +372,7 @@ public static class Program
         SweepFps = fps ?? opts.Number("fps", 0),
         Background = opts.Text("background") is { Length: > 0 } c && SKColor.TryParse(c, out var colour) ? colour : null,
         Alpha = opts.Has("alpha") ? true : null,
+        ShowBackground = opts.Has("no-background") ? false : null,
     };
 
     /// <summary>Always say what the requested length actually became. Silence when it was exact,
@@ -421,6 +482,9 @@ public static class Program
           cupricut frames --composition <file> [--duration 3 | --to 3] [--fps 30] [--out <dir>]
           cupricut video  --composition <file> [--duration 3 | --to 3] [--fps 30]
                                                [--codec h264|h265|vp9|prores|gif] [--out clip]
+          cupricut export --composition <file> --formats mp4,mask,gif [--duration 3] [--alpha]
+                                               [--fps 30] [--out <dir>]
+          cupricut formats
           cupricut probe
           cupricut calibrate [--all] [--no-benchmark] [--apply]
           cupricut fonts  [--composition <file>]
@@ -435,6 +499,8 @@ public static class Program
           --scale N                  pixel multiplier, like a HiDPI display
           --background '#101014'     frame clear colour
           --alpha                    transparent clear
+          --no-background            hide elements marked --cupricut-background, so the same
+                                     composition gives an opaque clip and a transparent one
           --alpha-mode <mode>        embedded (real alpha channel; vp9/prores only),
                                      matteBelow or matteRight (alpha as a second image in
                                      the same frame - works with h264 and everything else)

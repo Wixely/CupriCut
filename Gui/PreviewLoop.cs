@@ -25,9 +25,11 @@ public sealed partial class StudioController
         if (_model.Playing
             || !string.Equals(_model.Selected, _shownProject, StringComparison.Ordinal)
             || Math.Abs(_model.Time - _shownTime) > 1e-9
+            || _model.ShowBackground != _shownBackground
             || _model.OverlayVersion != _shownOverlay)
         {
             _shownProject = _model.Selected;
+            _shownBackground = _model.ShowBackground;
             _wake.Set();
         }
     }
@@ -88,7 +90,13 @@ public sealed partial class StudioController
                     continue;
                 }
 
-                if (session is null || !string.Equals(session.Composition, wanted, StringComparison.Ordinal))
+                // The backdrop switch is part of a session's identity, not a setting it can be
+                // told: hiding the backdrop rewrites the MARKUP, so it means a new document. There
+                // is no event to hook - the checkbox binds two-way - so the change is noticed here,
+                // by the session and the model disagreeing.
+                if (session is null
+                    || !string.Equals(session.Composition, wanted, StringComparison.Ordinal)
+                    || session.BackdropHidden == _model.ShowBackground)
                 {
                     session?.Dispose();
                     session = null;
@@ -99,7 +107,13 @@ public sealed partial class StudioController
 
                 var time = _model.Time;
                 var overlay = _model.OverlayVersion;
-                var moved = Math.Abs(time - _shownTime) > 1e-9;
+
+                // NaN is the "nothing has been shown yet" sentinel, and it has to be TESTED rather
+                // than compared: every comparison with NaN is false, so `Math.Abs(t - NaN) > eps`
+                // reads as "has not moved" - the exact opposite of what the sentinel means. Left
+                // implicit, a freshly opened session fell through to Repaint, which has no previous
+                // frame to repaint and returns null, and the preview stayed on the placeholder.
+                var moved = double.IsNaN(_shownTime) || Math.Abs(time - _shownTime) > 1e-9;
                 var redrawn = overlay != _shownOverlay;
                 if (!moved && !redrawn) continue;
 
@@ -143,8 +157,12 @@ public sealed partial class StudioController
         _model.Rendering = true;
         try
         {
-            var session = PreviewSession.Open(_cut, composition, _model.FrameWidth, _model.FrameHeight, PreviewBackground(composition));
+            var session = PreviewSession.Open(_cut, composition, _model.FrameWidth, _model.FrameHeight,
+                PreviewBackground(composition), _model.ShowBackground);
             _model.PurityNote = session.Purity.Summary;
+
+            // Only offer the switch when there is something for it to switch.
+            _model.HasBackdrop = session.Backdrops.Count > 0;
             return session;
         }
         catch (Exception ex)

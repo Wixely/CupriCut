@@ -1,3 +1,4 @@
+using System.Diagnostics;
 using System.Globalization;
 using CupriCut.Services;
 using CupriFace;
@@ -28,6 +29,7 @@ public sealed partial class StudioController : IDisposable
     private double _shownTime = double.NaN;
     private string? _shownProject;
     private int _shownOverlay = -1;
+    private bool _shownBackground = true;
 
     // The render thread and the handshake with it. See PreviewLoop.cs.
     private readonly ManualResetEventSlim _wake = new(false);
@@ -204,6 +206,10 @@ public sealed partial class StudioController : IDisposable
                 RunCalibration();
                 break;
 
+            case "export":
+                RunExport();
+                break;
+
             case "toggle-checks":
                 _model.ShowAllChecks = !_model.ShowAllChecks;
                 ShowCalibration();
@@ -268,6 +274,80 @@ public sealed partial class StudioController : IDisposable
 
     /// <summary>Run the checks on a worker: they encode several clips and time a render, which is
     /// seconds of work and must not be done on the thread painting the window.</summary>
+    /// <summary>
+    /// Write the open project out in whatever the dropdown is set to.
+    ///
+    /// <para>On a worker, like calibration: a ten-second clip is seconds of work and the window has
+    /// to keep drawing through it. The preview session is left alone - the export opens its own
+    /// documents - so scrubbing still works while it runs.</para>
+    /// </summary>
+    private void RunExport()
+    {
+        if (_model.Exporting) return;
+        if (_model.Selected is not { } project)
+        {
+            _model.Status = "Open a project before exporting one.";
+            return;
+        }
+
+        // A bundle is two formats out of one render, which is the thing export is for. Spelled in
+        // the dropdown rather than hidden behind a multi-select nobody would find.
+        var formats = _model.ExportFormat.Split('+', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
+        var showBackground = _model.ShowBackground;
+
+        _model.Exporting = true;
+        _model.Status = $"Exporting {string.Join(" and ", formats)}...";
+
+        _ = Task.Run(() =>
+        {
+            try
+            {
+                var loaded = _cut.LoadComposition(project);
+                var defaults = loaded.Defaults;
+                var fps = defaults?.Fps > 0 ? defaults.Fps : _cut.Options.DefaultFps;
+                var (times, plan) = ClipPlanner.Plan(0, defaults?.Duration ?? 3, fps);
+
+                var stem = Path.GetFileNameWithoutExtension(project.Replace(CutProject.Extension, string.Empty));
+                var directory = Path.GetDirectoryName(_cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
+                Directory.CreateDirectory(directory);
+
+                // Picking "mask" in the dropdown is how transparency is asked for in the window -
+                // there is no separate alpha switch, and a second one would only be a way to get
+                // the two out of step. Plan works that out, and everything below uses ITS answer.
+                var export = ExportFormats.Plan(formats, asked: null, defaults?.Alpha ?? false,
+                    name => Path.Combine(directory, name));
+
+                var sw = Stopwatch.StartNew();
+                var (videos, _) = _encoder.ExportFastest(
+                    loaded,
+                    new SweepSpec
+                    {
+                        Composition = project,
+                        Times = times,
+                        SweepFps = fps,
+                        Alpha = export.Alpha,
+                        ShowBackground = showBackground,
+                    },
+                    export.Targets, fps, workers: 0, _cut.RenderLog);
+                sw.Stop();
+
+                var total = videos.Sum(v => v.Bytes);
+                _model.Status =
+                    $"Exported {string.Join(" + ", export.Targets.Select(t => t.Name))} - " +
+                    $"{videos[0].Frames} frames, {plan.ActualSeconds:0.###}s, {total:N0} bytes in {sw.Elapsed.TotalSeconds:0.0}s. {directory}";
+            }
+            catch (Exception ex)
+            {
+                _model.Status = "Export failed: " + ex.Message;
+                _log.LogWarning(ex, "Export of {Project} failed", project);
+            }
+            finally
+            {
+                _model.Exporting = false;
+            }
+        });
+    }
+
     private void RunCalibration()
     {
         if (_model.Calibrating) return;

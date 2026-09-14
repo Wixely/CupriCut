@@ -121,6 +121,41 @@ public sealed class StudioModel
     /// <summary>The note that will be attached to the next region drawn.</summary>
     public string PendingNote { get; set; } = string.Empty;
 
+    /// <summary>Whether the open composition's marked backdrop is drawn.
+    ///
+    /// <para>Written by the checkbox, which binds two-way - there is no event to hook, so the
+    /// render loop notices it changed by comparing it against what the open session was built
+    /// with. Turning it off is a change to the MARKUP, so the document is reopened.</para></summary>
+    public bool ShowBackground { get; set; } = true;
+
+    /// <summary>Whether the open composition marks a backdrop at all. A switch that would do
+    /// nothing is worse than no switch, so the row is hidden when it would.</summary>
+    public bool HasBackdrop { get; set; }
+
+    /// <summary>Empty when there is a backdrop to toggle, "hidden" when there is not.</summary>
+    public string BackdropClass => HasBackdrop ? "" : "hidden";
+
+    /// <summary>What the export dropdown is set to. One of <c>ExportFormats.Names</c>, or one of
+    /// the bundles below.</summary>
+    public string ExportFormat { get; set; } = "mp4";
+
+    /// <summary>Whether the format dropdown's list is showing.
+    ///
+    /// <para>Required, not optional. A <c>cupri-select</c> keeps its open state in the MODEL, and
+    /// one without an <c>open</c> binding is a trigger that can never open - it still swallows the
+    /// click and reports it handled, so it looks like a dropdown and behaves like a label. The
+    /// engine has a diagnostic for exactly this (CF0021), which is why the markup is checked by
+    /// CupriDoctor in the tests.</para></summary>
+    public bool FormatOpen { get; set; }
+
+    /// <summary>True while an export is running on a worker. The button says so and refuses to
+    /// start a second one, because they would share the render gate and queue anyway.</summary>
+    public bool Exporting { get; set; }
+
+    public string ExportLabel => Exporting ? "Exporting\u2026" : "Export";
+
+    public string ExportClass => Exporting ? "armed" : "";
+
     /// <summary>The rectangle being dragged right now, in normalised frame coordinates.</summary>
     public bool Dragging { get; set; }
     public double DragX { get; set; }

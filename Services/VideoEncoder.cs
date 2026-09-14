@@ -26,6 +26,16 @@ public enum AlphaMode
     /// <summary>Colour on the left, alpha as greyscale on the right, in one opaque frame of twice
     /// the width.</summary>
     MatteRight,
+
+    /// <summary>
+    /// The alpha channel ALONE, as a black-and-white video the same size as the colour one.
+    ///
+    /// <para>Not a way of carrying colour and alpha together - it throws the colour away. It is the
+    /// travelling matte an editor asks for when its format will not take a transparent clip at all:
+    /// white where the composition is opaque, black where it is not, and the colour rendered
+    /// separately. Every editor that exists can key one of these.</para>
+    /// </summary>
+    MaskOnly,
 }
 
 /// <summary>What ffmpeg is on this machine, if anything.</summary>
@@ -152,11 +162,17 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
             throw new InvalidOperationException($"ffmpeg exited {process.ExitCode}. {Tail(stderr)}");
     }
 
-    private static string? MatteNote(bool alpha, AlphaMode mode) =>
-        alpha && mode != AlphaMode.Embedded
-            ? $"Alpha is carried as a matte: the frame is {(mode == AlphaMode.MatteRight ? "twice as wide, colour left and alpha right" : "twice as tall, colour on top and alpha below")}. " +
-              "Composite with colour x alpha; the colour half is straight (unpremultiplied) alpha."
-            : null;
+    private static string? MatteNote(bool alpha, AlphaMode mode)
+    {
+        if (!alpha || mode == AlphaMode.Embedded) return null;
+
+        if (mode == AlphaMode.MaskOnly)
+            return "This is the MASK, not the artwork: white where the composition is opaque, black where it is not, " +
+                   "and no colour at all. Render the same clip again without the mask to get the colour half.";
+
+        return $"Alpha is carried as a matte: the frame is {(mode == AlphaMode.MatteRight ? "twice as wide, colour left and alpha right" : "twice as tall, colour on top and alpha below")}. " +
+               "Composite with colour x alpha; the colour half is straight (unpremultiplied) alpha.";
+    }
 
     /// <summary>Codecs offered by name, and what they mean to ffmpeg. Keyed the way an agent would
     /// ask.</summary>
@@ -188,6 +204,13 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         if (string.IsNullOrWhiteSpace(name)) return Default(alpha && mode == AlphaMode.Embedded);
         if (!Codecs.TryGetValue(name, out var codec))
             throw new ArgumentException($"Unknown codec '{name}'. Known codecs: {string.Join(", ", Codecs.Keys)}.", nameof(name));
+
+        // A mask of an opaque render is a white rectangle. Refusing it is kinder than writing one
+        // and leaving someone to key against it.
+        if (mode == AlphaMode.MaskOnly && !alpha)
+            throw new ArgumentException(
+                "A mask is the alpha channel, and an opaque render has none - the file would be a plain white rectangle. " +
+                "Set alpha:true, which is what gives the mask something to describe.", nameof(name));
 
         // A matte needs no alpha channel - that is the whole point of it - so only the embedded
         // mode cares what the codec can carry.
@@ -341,36 +364,50 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
     /// Render and encode, choosing the fastest honest route.
     ///
     /// <para>A composition pure in <c>t</c> has independent frames, so a long clip is sharded across
-    /// cores into a scratch directory and muxed from there. An impure one must be swept in order and
-    /// goes down the pipe as before. Short clips go down the pipe either way: below about fifty
-    /// frames the setup costs more than the sharding saves.</para>
+    /// cores. An impure one must be swept in order. Short clips go down one thread either way: below
+    /// about fifty frames the setup costs more than the sharding saves.</para>
     /// </summary>
     public (VideoResult Video, SweepReport Sweep) EncodeFastest(
         Composition composition, SweepSpec spec, string outputPath, VideoCodec codec,
         double outputFps, AlphaMode alphaMode, int workers, ILogger renderLog)
     {
+        var (videos, report) = ExportFastest(composition, spec,
+            [new ExportTarget(codec.Name, codec, alphaMode, outputPath)], outputFps, workers, renderLog);
+        return (videos[0], report);
+    }
+
+    /// <summary>
+    /// The same choice of route, producing however many files were asked for from the one render.
+    ///
+    /// <para>The targets share the sweep, so the second format is very nearly free: what a clip
+    /// costs is rendering it, and a frame written to four pipes costs no more to render than a
+    /// frame written to one.</para>
+    /// </summary>
+    public (IReadOnlyList<VideoResult> Videos, SweepReport Sweep) ExportFastest(
+        Composition composition, SweepSpec spec, IReadOnlyList<ExportTarget> targets,
+        double outputFps, int workers, ILogger renderLog)
+    {
         cut.EnsureVideoAllowed();
+
+        // Resolved HERE as well as in the sweep, because the parallel path opens its own documents
+        // straight from this composition and never passes through Sweep. Applying it twice is a
+        // no-op - the composition remembers.
+        composition = Backdrop.Resolve(composition, spec.ShowBackground);
 
         var purity = Purity.Analyse(composition);
         var wanted = ParallelRenderer.Resolve(workers, cut.Options.RenderWorkers);
 
         if (!purity.PureInTime || spec.Times.Count < ParallelRenderer.WorthSharding || wanted == 1)
-            return Encode(composition, spec, outputPath, codec, outputFps, alphaMode);
+            return EncodeAll(composition, spec, targets, outputFps);
 
-        // Same pipe as the sequential path - only the number of threads feeding it differs.
+        // Same pipes as the sequential path - only the number of threads feeding them differs.
         var renderer = new ParallelRenderer(cut, renderLog);
         ShardReport? shard = null;
-        var video = PipeInto(composition, spec, outputPath, codec, outputFps, alphaMode,
-            (stdin, frameBytes) =>
-            {
-                shard = renderer.RenderInOrder(composition, spec, spec.Times, wanted, (_, span) =>
-                {
-                    if (span.Length != frameBytes)
-                        throw new InvalidOperationException($"A frame is {span.Length} bytes, expected {frameBytes}.");
-                    stdin.Write(span);
-                });
-                return shard.Frames;
-            });
+        var videos = Fan(composition, spec, targets, outputFps, (write, _) =>
+        {
+            shard = renderer.RenderInOrder(composition, spec, spec.Times, wanted, (_, span) => write(span));
+            return shard.Frames;
+        });
 
         var report = new SweepReport(
             composition.Path,
@@ -380,90 +417,106 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
             shard!.Frames, shard.Frames, outputFps, spec.Times[^1], shard.ElapsedMs, true, [])
         { Purity = purity, Workers = shard.Workers };
 
-        return (video, report);
+        return (videos, report);
+    }
+    /// <summary>
+    /// Start one ffmpeg per target, let <paramref name="fill"/> produce raw frames, and write every
+    /// frame into all of them.
+    ///
+    /// <para>This is the only place a rendered clip becomes a file, and everything that used to be
+    /// written out three times - starting the process, holding its stderr, telling a broken pipe
+    /// from a bad exit, probing what actually came out - happens once here.</para>
+    ///
+    /// <para><b>One render, several files.</b> A frame costs the same to write to four pipes as to
+    /// one, and the render is what the time goes on, so an mp4 alongside its mask alongside a GIF
+    /// costs one sweep rather than three. The targets share the render, which means they share its
+    /// alpha: with alpha on, an opaque target is flattened onto black by its own pixel format, and
+    /// black-plus-matte is exactly the pair an editor keys.</para>
+    /// </summary>
+    private IReadOnlyList<VideoResult> Fan(Composition composition, SweepSpec spec,
+        IReadOnlyList<ExportTarget> targets, double outputFps, FrameSource fill)
+    {
+        if (targets.Count == 0) throw new ArgumentException("An export needs at least one target.", nameof(targets));
+
+        var (width, height, alpha, sweepFps) = Geometry(composition, spec);
+        var frameBytes = width * height * 4;
+
+        var sinks = new List<FfmpegSink>(targets.Count);
+        try
+        {
+            foreach (var target in targets)
+            {
+                var args = BuildArguments(width, height, sweepFps, outputFps, target.Codec, target.Path, alpha, target.AlphaMode);
+                sinks.Add(FfmpegSink.Start(cut.Options.FfmpegPath, args, target.Name, target.Path, log));
+            }
+
+            var written = 0;
+            void Write(ReadOnlySpan<byte> frame)
+            {
+                if (frame.Length != frameBytes)
+                    throw new InvalidOperationException($"A frame is {frame.Length} bytes, expected {frameBytes}.");
+
+                for (var i = 0; i < sinks.Count; i++)
+                {
+                    try { sinks[i].Input.Write(frame); }
+                    catch (IOException ex) { throw sinks[i].Broke(ex, written); }
+                }
+                written++;
+            }
+
+            var frames = fill(Write, frameBytes);
+            foreach (var sink in sinks) sink.Finish(cut.Options.FfmpegTimeoutSeconds, frames);
+
+            var results = new List<VideoResult>(targets.Count);
+            for (var i = 0; i < targets.Count; i++)
+            {
+                var target = targets[i];
+
+                // Asked of the TARGET, not of the path: a PNG sequence's path is a pattern, and
+                // File.Exists on a pattern is false however many frames landed beside it.
+                var bytes = target.SizeOnDisk();
+                if (bytes == 0)
+                    throw new InvalidOperationException(
+                        $"ffmpeg ({target.Name}) reported success but wrote nothing at '{target.Path}'. {sinks[i].Tail()}");
+
+                var actualFormat = PixelFormatOf(target.Path);
+
+                // Only a target that was SUPPOSED to come out transparent. An export of mp4
+                // alongside mask renders once with alpha and writes both, and the mp4 losing its
+                // alpha channel is the point of it - that pair is the colour and its matte. The
+                // check still fires for a format that claims to carry alpha and then does not,
+                // which is the failure it was written for.
+                if (alpha && target.AlphaMode == AlphaMode.Embedded && target.Codec.Alpha)
+                    VerifyEmbeddedAlpha(target.Codec, actualFormat, target.Path);
+
+                results.Add(new VideoResult(target.Path, bytes, frames, outputFps,
+                    frames / outputFps, target.Codec.Name, alpha)
+                {
+                    AlphaMode = target.AlphaMode,
+                    PixelFormat = actualFormat,
+                    Note = target.Note ?? MatteNote(alpha, target.AlphaMode),
+                });
+            }
+            return results;
+        }
+        finally
+        {
+            foreach (var sink in sinks) sink.Dispose();
+        }
     }
 
-    /// <summary>
-    /// Start ffmpeg, let <paramref name="fill"/> write raw frames into its stdin, and finish.
-    ///
-    /// <para>The only difference between the sequential and parallel paths is who fills the pipe -
-    /// one sweep on this thread, or a pool of workers whose output is reordered before it gets
-    /// here. Everything else about the process, the failure handling and the alpha verification is
-    /// shared, so the two cannot drift.</para>
-    /// </summary>
-    private VideoResult PipeInto(Composition composition, SweepSpec spec, string outputPath, VideoCodec codec,
-        double outputFps, AlphaMode alphaMode, Func<Stream, int, int> fill)
+    /// <summary>The frame size and alpha a spec resolves to. Resolved the same way the sweep
+    /// resolves them - caller, then project, then configuration - because the pipe has to be told
+    /// the exact frame size the sweep will produce.</summary>
+    private (int Width, int Height, bool Alpha, double SweepFps) Geometry(Composition composition, SweepSpec spec)
     {
         var defaults = composition.Defaults;
         var scale = spec.Scale > 0 ? spec.Scale : defaults?.Scale > 0 ? defaults.Scale : 1;
-        var alpha = spec.Alpha ?? defaults?.Alpha ?? false;
-        var width = (spec.Width > 0 ? spec.Width : defaults?.Width > 0 ? defaults.Width : cut.Options.DefaultWidth) * scale;
-        var height = (spec.Height > 0 ? spec.Height : defaults?.Height > 0 ? defaults.Height : cut.Options.DefaultHeight) * scale;
-        var frameBytes = width * height * 4;
-
-        var sweepFps = spec.SweepFps > 0 ? spec.SweepFps : defaults?.Fps > 0 ? defaults.Fps : cut.Options.DefaultFps;
-        var args = BuildArguments(width, height, sweepFps, outputFps, codec, outputPath, alpha, alphaMode);
-        log.LogInformation("ffmpeg {Args}", args);
-
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo(cut.Options.FfmpegPath, args)
-            {
-                RedirectStandardInput = true,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            },
-        };
-
-        var stderr = new StringBuilder();
-        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
-
-        try { process.Start(); }
-        catch (Exception ex)
-        {
-            throw new CutPolicyException(
-                $"Could not start ffmpeg at '{cut.Options.FfmpegPath}': {ex.Message}. " +
-                "Set Cut:FfmpegPath, or call probe to see what this machine has.");
-        }
-
-        process.BeginErrorReadLine();
-        process.BeginOutputReadLine();
-
-        int written;
-        try
-        {
-            written = fill(process.StandardInput.BaseStream, frameBytes);
-            process.StandardInput.BaseStream.Flush();
-        }
-        catch (IOException ex)
-        {
-            KillQuietly(process);
-            throw new InvalidOperationException($"ffmpeg stopped reading. {Tail(stderr)}", ex);
-        }
-
-        process.StandardInput.Close();
-        if (!process.WaitForExit(TimeSpan.FromSeconds(cut.Options.FfmpegTimeoutSeconds)))
-        {
-            KillQuietly(process);
-            throw new TimeoutException($"ffmpeg did not finish within Cut:FfmpegTimeoutSeconds. {Tail(stderr)}");
-        }
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException($"ffmpeg exited {process.ExitCode}. {Tail(stderr)}");
-
-        var info = new FileInfo(outputPath);
-        if (!info.Exists) throw new InvalidOperationException($"ffmpeg reported success but wrote no file at '{outputPath}'. {Tail(stderr)}");
-
-        var actualFormat = PixelFormatOf(outputPath);
-        if (alpha && alphaMode == AlphaMode.Embedded) VerifyEmbeddedAlpha(codec, actualFormat, outputPath);
-
-        return new VideoResult(outputPath, info.Length, written, outputFps, written / outputFps, codec.Name, alpha)
-        {
-            AlphaMode = alphaMode,
-            PixelFormat = actualFormat,
-            Note = MatteNote(alpha, alphaMode),
-        };
+        return (
+            (spec.Width > 0 ? spec.Width : defaults?.Width > 0 ? defaults.Width : cut.Options.DefaultWidth) * scale,
+            (spec.Height > 0 ? spec.Height : defaults?.Height > 0 ? defaults.Height : cut.Options.DefaultHeight) * scale,
+            spec.Alpha ?? defaults?.Alpha ?? false,
+            spec.SweepFps > 0 ? spec.SweepFps : defaults?.Fps > 0 ? defaults.Fps : cut.Options.DefaultFps);
     }
 
     /// <summary>Sweep the composition and pipe every kept frame into ffmpeg.</summary>
@@ -478,106 +531,41 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
     public (VideoResult Video, SweepReport Sweep) Encode(Composition composition, SweepSpec spec,
         string outputPath, VideoCodec codec, double outputFps, AlphaMode alphaMode)
     {
-        cut.EnsureVideoAllowed();
+        var (video, report) = EncodeAll(composition, spec,
+            [new ExportTarget(codec.Name, codec, alphaMode, outputPath)], outputFps);
+        return (video[0], report);
+    }
 
-        // Resolved the same way the sweep resolves them - caller, then project, then configuration
-        // - because the pipe has to be told the exact frame size the sweep will produce.
-        var defaults = composition.Defaults;
-        var scale = spec.Scale > 0 ? spec.Scale : defaults?.Scale > 0 ? defaults.Scale : 1;
-        var alpha = spec.Alpha ?? defaults?.Alpha ?? false;
-        var width = (spec.Width > 0 ? spec.Width : defaults?.Width > 0 ? defaults.Width : cut.Options.DefaultWidth) * scale;
-        var height = (spec.Height > 0 ? spec.Height : defaults?.Height > 0 ? defaults.Height : cut.Options.DefaultHeight) * scale;
+    /// <summary>Sweep once on this thread and feed every target from it.</summary>
+    public (IReadOnlyList<VideoResult> Videos, SweepReport Sweep) EncodeAll(Composition composition, SweepSpec spec,
+        IReadOnlyList<ExportTarget> targets, double outputFps)
+    {
+        cut.EnsureVideoAllowed();
+        composition = Backdrop.Resolve(composition, spec.ShowBackground);
+
+        var (width, height, alpha, _) = Geometry(composition, spec);
 
         // Premultiplied is what the sweep's surface holds and what Skia produces natively; ffmpeg's
         // rgba is straight alpha, so an unpremultiplied read-back is the one conversion needed. On
         // an opaque render the two are identical, so this costs nothing there.
-        var frameBytes = (long)width * height * 4;
         using var readback = new SKBitmap(new SKImageInfo(width, height, SKColorType.Rgba8888,
             alpha ? SKAlphaType.Unpremul : SKAlphaType.Premul));
 
-        var sweepFps = spec.SweepFps > 0 ? spec.SweepFps : defaults?.Fps > 0 ? defaults.Fps : cut.Options.DefaultFps;
-        var args = BuildArguments(width, height, sweepFps, outputFps, codec, outputPath, alpha, alphaMode);
-        log.LogInformation("ffmpeg {Args}", args);
-
-        using var process = new Process
-        {
-            StartInfo = new ProcessStartInfo(cut.Options.FfmpegPath, args)
-            {
-                RedirectStandardInput = true,
-                RedirectStandardError = true,
-                RedirectStandardOutput = true,
-                UseShellExecute = false,
-                CreateNoWindow = true,
-            },
-        };
-
-        var stderr = new StringBuilder();
-        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
-
-        try
-        {
-            process.Start();
-        }
-        catch (Exception ex)
-        {
-            throw new CutPolicyException(
-                $"Could not start ffmpeg at '{cut.Options.FfmpegPath}': {ex.Message}. " +
-                "Set Cut:FfmpegPath, or call probe to see what this machine has. The Docker image carries ffmpeg; the release zips do not.");
-        }
-
-        process.BeginErrorReadLine();
-        process.BeginOutputReadLine();
-
-        var frames = 0;
         SweepReport report = null!;
-        try
+        var frames = 0;
+        var videos = Fan(composition, spec, targets, outputFps, (write, _) =>
         {
-            var stdin = process.StandardInput.BaseStream;
             report = cut.Sweep(composition, spec, frame =>
             {
                 if (!frame.Image.ReadPixels(readback.PeekPixels(), 0, 0))
                     throw new InvalidOperationException($"Could not read frame {frame.Index} back from the render surface.");
-                var span = readback.GetPixelSpan();
-                if (span.Length != frameBytes)
-                    throw new InvalidOperationException($"Frame {frame.Index} is {span.Length} bytes, expected {frameBytes}.");
-                stdin.Write(span);
+                write(readback.GetPixelSpan());
                 frames++;
             });
-            stdin.Flush();
-        }
-        catch (IOException ex)
-        {
-            // A broken pipe means ffmpeg died first, and its stderr says why - which is a far more
-            // useful error than "the pipe has been ended".
-            KillQuietly(process);
-            throw new InvalidOperationException($"ffmpeg stopped reading after {frames} frame(s). {Tail(stderr)}", ex);
-        }
+            return frames;
+        });
 
-        process.StandardInput.Close();
-        if (!process.WaitForExit(TimeSpan.FromSeconds(cut.Options.FfmpegTimeoutSeconds)))
-        {
-            KillQuietly(process);
-            throw new TimeoutException($"ffmpeg did not finish within Cut:FfmpegTimeoutSeconds ({cut.Options.FfmpegTimeoutSeconds}s). {Tail(stderr)}");
-        }
-
-        if (process.ExitCode != 0)
-            throw new InvalidOperationException($"ffmpeg exited {process.ExitCode}. {Tail(stderr)}");
-
-        var info = new FileInfo(outputPath);
-        if (!info.Exists) throw new InvalidOperationException($"ffmpeg reported success but wrote no file at '{outputPath}'. {Tail(stderr)}");
-
-        var actualFormat = PixelFormatOf(outputPath);
-        if (alpha && alphaMode == AlphaMode.Embedded) VerifyEmbeddedAlpha(codec, actualFormat, outputPath);
-
-        var note = MatteNote(alpha, alphaMode);
-
-        var result = new VideoResult(outputPath, info.Length, frames, outputFps, frames / outputFps, codec.Name, alpha)
-        {
-            AlphaMode = alphaMode,
-            PixelFormat = actualFormat,
-            Note = note,
-        };
-        return (result, report);
+        return (videos, report);
     }
 
     /// <summary>
@@ -592,6 +580,10 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
     /// </summary>
     private static string MatteFilter(AlphaMode mode)
     {
+        // The mask keeps only the alpha. gray rather than rgba because there is nothing to stack it
+        // against, and greyscale is what the yuv420p conversion downstream wants anyway.
+        if (mode == AlphaMode.MaskOnly) return "[0:v]format=rgba,alphaextract,format=gray[v]";
+
         var stack = mode == AlphaMode.MatteRight ? "hstack" : "vstack";
         return "[0:v]format=rgba,split=2[c][a];" +
                "[a]alphaextract,format=rgba[am];" +

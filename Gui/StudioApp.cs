@@ -114,6 +114,29 @@ public sealed class StudioApp(StudioModel model) : CupriApp
                 <cupri-button data-cut-action="cancel" class="{{CancelClass}}">Cancel</cupri-button>
               </div>
 
+              <!-- The backdrop switch and the export dropdown. cupri-checkbox binds two-way,
+                   which is how the switch reaches the model without an event; the render loop
+                   compares it against the open session and reopens the document when they part. -->
+              <div class="tools">
+                <div class="bgrow {{BackdropClass}}">
+                  <cupri-checkbox checked="{{ShowBackground}}"></cupri-checkbox>
+                  <div class="bglabel">Background</div>
+                </div>
+                <cupri-select value="{{ExportFormat}}" open="{{FormatOpen}}" class="fmt">
+                  <cupri-option value="mp4">mp4 &mdash; plays everywhere</cupri-option>
+                  <cupri-option value="h265">h265 &mdash; smaller, fussier</cupri-option>
+                  <cupri-option value="webm">webm &mdash; real alpha channel</cupri-option>
+                  <cupri-option value="mov">mov &mdash; ProRes 4444</cupri-option>
+                  <cupri-option value="gif">gif</cupri-option>
+                  <cupri-option value="frames">frames &mdash; numbered PNGs</cupri-option>
+                  <cupri-option value="mask">mask &mdash; alpha only</cupri-option>
+                  <cupri-option value="matte">matte &mdash; colour over alpha</cupri-option>
+                  <cupri-option value="mp4+mask">mp4 + mask &mdash; the keying pair</cupri-option>
+                  <cupri-option value="mp4+gif">mp4 + gif</cupri-option>
+                </cupri-select>
+                <cupri-button data-cut-action="export" class="{{ExportClass}}">{{ExportLabel}}</cupri-button>
+              </div>
+
               <div class="status">{{Status}}</div>
               <div class="purity">{{RenderStat}} &nbsp; {{PurityNote}}</div>
             </div>
@@ -278,6 +301,11 @@ public sealed class StudioApp(StudioModel model) : CupriApp
         .nat  { flex:1; font-size:11px; font-weight:700; color:#d9642a; }
         .nstatus { width:62px; font-size:11px; color:#5a6a85; }
         .ntext   { font-size:12px; color:#e8edf5; margin-top:5px; }
+        /* flex:none because .tools is a flex row and the label was being shrunk into a clip
+           rather than pushing the dropdown along. */
+        .bgrow   { display:flex; align-items:center; gap:8px; flex:none; margin-right:20px; }
+        .bglabel { font-size:13px; color:#9fb0c9; white-space:nowrap; }
+        .fmt     { width:280px; flex:none; margin-right:10px; }
         .nregion { font-size:11px; color:#5a6a85; margin-top:4px; }
         .nframe  { font-size:11px; color:#455066; margin-top:2px; }
         .nrow.editing { border:1px solid #d9642a; }

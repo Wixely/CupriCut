@@ -34,6 +34,10 @@ public sealed record SweepSpec
     /// <summary>Clear to transparent and keep the alpha channel. Null is unset.</summary>
     public bool? Alpha { get; init; }
 
+    /// <summary>Draw the elements marked <c>--cupricut-background</c>. Null is unset: a project's
+    /// own choice, or showing them.</summary>
+    public bool? ShowBackground { get; init; }
+
     /// <summary>Sweep every intermediate frame even when the composition does not need it. The
     /// analysis is conservative, so this is for proving a difference rather than for safety.</summary>
     public bool ForceSweep { get; init; }

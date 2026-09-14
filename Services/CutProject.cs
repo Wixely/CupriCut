@@ -111,6 +111,11 @@ public sealed class RenderSettings
 
     public bool Alpha { get; set; }
 
+    /// <summary>Whether elements marked <c>--cupricut-background</c> are drawn. False gives the
+    /// same composition over nothing, which is what an edit wants; true gives it over its own
+    /// backdrop, which is what a reviewer needs to judge the colours.</summary>
+    public bool ShowBackground { get; set; } = true;
+
     /// <summary>Preferred codec name for <c>render_video</c>.</summary>
     public string? Codec { get; set; }
 }

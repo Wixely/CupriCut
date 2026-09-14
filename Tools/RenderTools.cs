@@ -37,6 +37,7 @@ public static class RenderTools
         [Description("Frames per second the sweep steps at. This is what 'the frame at t' means.")] double fps = 0,
         [Description("Background colour, e.g. '#101014'. Default white.")] string? background = null,
         [Description("Clear to transparent and keep the alpha channel.")] bool? alpha = null,
+        [Description("Draw the elements marked --cupricut-background. False renders the same composition over nothing, which is what an edit wants; a composition that marks nothing is unaffected. Defaults to the project's own choice, or true.")] bool? showBackground = null,
         [Description("Also write the PNG here, relative to the output root.")] string? save = null)
     {
         var loaded = cut.LoadComposition(composition);
@@ -53,6 +54,7 @@ public static class RenderTools
                 SweepFps = fps,
                 Background = ToolSupport.ParseColor(background),
                 Alpha = alpha,
+                ShowBackground = showBackground,
             },
             frame => png = FrameEncoder.Encode(frame.Image));
 
@@ -71,6 +73,7 @@ public static class RenderTools
             t,
             saved,
             bytes = png.Length,
+            backdrop = ToolSupport.Backdrop(loaded, showBackground),
             cost = ToolSupport.Cost(report),
         });
     }
@@ -98,6 +101,7 @@ public static class RenderTools
         [Description("Frames per second the sweep steps at.")] double fps = 0,
         [Description("Background colour, e.g. '#101014'. Default white.")] string? background = null,
         [Description("Clear to transparent; cells get a checkerboard so transparency reads as transparency.")] bool? alpha = null,
+        [Description("Draw the elements marked --cupricut-background. False renders the same composition over nothing, which is what an edit wants; a composition that marks nothing is unaffected. Defaults to the project's own choice, or true.")] bool? showBackground = null,
         [Description("Also write the sheet here, relative to the output root.")] string? save = null)
     {
         var loaded = cut.LoadComposition(composition);
@@ -122,6 +126,7 @@ public static class RenderTools
                     SweepFps = fps,
                     Background = ToolSupport.ParseColor(background),
                     Alpha = alpha,
+                    ShowBackground = showBackground,
                 },
                 frame => cells.Add((ToolSupport.Thumbnail(FrameEncoder.Copy(frame.Image), thumbnailWidth), frame.Time)));
         }
@@ -151,7 +156,8 @@ public static class RenderTools
                 thumbnailWidth,
                 saved,
                 bytes = png.Length,
-                cost = ToolSupport.Cost(report),
+                backdrop = ToolSupport.Backdrop(loaded, showBackground),
+            cost = ToolSupport.Cost(report),
             });
     }
 
@@ -175,6 +181,7 @@ public static class RenderTools
         [Description("Pixel multiplier, like a HiDPI display. Defaults to a project's own scale, or 1.")] int scale = 0,
         [Description("Background colour, e.g. '#101014'. Default white.")] string? background = null,
         [Description("Clear to transparent and keep the alpha channel.")] bool? alpha = null,
+        [Description("Draw the elements marked --cupricut-background. False renders the same composition over nothing, which is what an edit wants; a composition that marks nothing is unaffected. Defaults to the project's own choice, or true.")] bool? showBackground = null,
         [Description("Directory under the output root to write into. Default is the composition's name.")] string? outputDirectory = null)
     {
         var loaded = cut.LoadComposition(composition);
@@ -199,6 +206,7 @@ public static class RenderTools
             SweepFps = rate,
             Background = ToolSupport.ParseColor(background),
             Alpha = alpha,
+            ShowBackground = showBackground,
         };
 
         // Streamed, not collected: a long sequence must not hold every frame in memory. The writer
@@ -229,6 +237,7 @@ public static class RenderTools
             files = written.Length <= 40 ? written.Select(Path.GetFileName) : null,
             first = Path.GetFileName(written[0]),
             last = Path.GetFileName(written[^1]),
+            backdrop = ToolSupport.Backdrop(loaded, showBackground),
             cost = ToolSupport.Cost(report),
         }, JsonOpts.Default);
     }
@@ -256,8 +265,9 @@ public static class RenderTools
         [Description("Pixel multiplier, like a HiDPI display. Defaults to a project's own scale, or 1.")] int scale = 0,
         [Description("h264, h265, vp9, prores or gif. Default h264, or vp9 when alpha is set.")] string? codec = null,
         [Description("Transparent background.")] bool? alpha = null,
-        [Description("How transparency is carried: 'embedded' (a real alpha channel - needs vp9 or prores), 'matteBelow' (colour on top, alpha greyscale below, doubles the height) or 'matteRight' (side by side). A matte works with ANY codec including h264, which has no alpha channel of its own.")] string? alphaMode = null,
+        [Description("How transparency is carried: 'embedded' (a real alpha channel - needs vp9 or prores), 'matteBelow' (colour on top, alpha greyscale below, doubles the height), 'matteRight' (side by side), or 'mask' (the alpha ALONE as a black-and-white clip, no colour). A matte or a mask works with ANY codec including h264, which has no alpha channel of its own.")] string? alphaMode = null,
         [Description("Background colour when alpha is false, e.g. '#101014'. Default white.")] string? background = null,
+        [Description("Draw the elements marked --cupricut-background. False renders the same composition over nothing, which is what an edit wants; a composition that marks nothing is unaffected. Defaults to the project's own choice, or true.")] bool? showBackground = null,
         [Description("Render threads. 0 uses every core, which is the default; 1 forces the sequential path. Only a composition pure in t can be sharded - an impure one is swept in order whatever this says.")] int workers = 0,
         [Description("File name under the output root. The codec's own extension is used if none is given.")] string? output = null)
     {
@@ -296,6 +306,7 @@ public static class RenderTools
                 SweepFps = rate,
                 Background = ToolSupport.ParseColor(background),
                 Alpha = alpha,
+                ShowBackground = showBackground,
             },
             path, picked, rate, mode, workers, cut.RenderLog);
 
@@ -313,9 +324,116 @@ public static class RenderTools
             pixelFormat = video.PixelFormat,
             note = video.Note,
             timing = Timing(plan),
+            backdrop = ToolSupport.Backdrop(loaded, showBackground),
             cost = ToolSupport.Cost(report),
         }, JsonOpts.Default);
     }
+
+    [McpServerTool(Name = "export"),
+     Description("""
+        Render a composition once and write it out in every format asked for.
+
+        One verb, a list of outcomes - mp4, h265, webm, mov, gif, mask, matte, frames - rather than
+        a codec argument someone has to already understand. Each name carries the codec, the pixel
+        format and the alpha handling that outcome needs.
+
+        The formats share the render, and rendering is what a clip costs, so the second format is
+        very nearly free: a frame written to four pipes costs no more to produce than a frame
+        written to one. They therefore share the render's alpha too. With alpha:true a format that
+        cannot carry an alpha channel - mp4, h265, gif - keeps the straight colour and goes black
+        where nothing was drawn, which alongside 'mask' is exactly the colour-and-matte pair an
+        editor keys. mask and matte are refused WITHOUT alpha, because the alpha channel is what
+        they are made of.
+
+        Call list_formats to see what each one gives you.
+        """)]
+    public static string Export(
+        CupriCutService cut,
+        VideoEncoder encoder,
+        [Description("Composition to render: an HTML file or a .cut.json project, relative to a configured root.")] string composition,
+        [Description("Formats to write: mp4, h265, webm, mov, gif, mask, matte, frames. Default mp4.")] string[]? formats = null,
+        [Description("First second to keep. The sweep always starts at 0 regardless.")] double from = 0,
+        [Description("Clip length in seconds. duration x fps frames exactly. Defaults to a project's own duration.")] double duration = 0,
+        [Description("Alternative to duration: an INCLUSIVE last second to keep, which is one frame longer than the same number as a duration.")] double to = 0,
+        [Description("Frames per second, for both the sweep and the output.")] double fps = 0,
+        [Description("Layout viewport width in CSS pixels.")] int width = 0,
+        [Description("Layout viewport height in CSS pixels.")] int height = 0,
+        [Description("Pixel multiplier, like a HiDPI display. Defaults to a project's own scale, or 1.")] int scale = 0,
+        [Description("Transparent background. Required by mask and matte.")] bool? alpha = null,
+        [Description("Background colour when alpha is false, e.g. '#101014'. Default white.")] string? background = null,
+        [Description("Draw the elements marked --cupricut-background. False renders the same composition over nothing, which is what an edit wants.")] bool? showBackground = null,
+        [Description("Render threads. 0 uses every core, which is the default; 1 forces the sequential path.")] int workers = 0,
+        [Description("Directory under the output root to write into. Default is the composition's name.")] string? outputDirectory = null)
+    {
+        cut.EnsureVideoAllowed();
+
+        var loaded = cut.LoadComposition(composition);
+        var defaults = loaded.Defaults;
+        var rate = fps > 0 ? fps : defaults?.Fps > 0 ? defaults.Fps : cut.Options.DefaultFps;
+
+        if (duration > 0 && to > 0)
+            throw new ArgumentException("Give either duration or to, not both - a length and an inclusive endpoint differ by one frame.", nameof(duration));
+
+        var span = duration > 0 ? duration : to > 0 ? 0 : defaults?.Duration ?? 3;
+        double[] times;
+        ClipPlan? plan = null;
+        if (span > 0) (times, plan) = ClipPlanner.Plan(from, span, rate);
+        else times = ToolSupport.Range(from, to, rate);
+
+        // Every file of one export lands in one directory named after the composition, because an
+        // export is one thing that happens to have several files in it.
+        var stem = ToolSupport.SafeStem(outputDirectory ?? composition, "export");
+        var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
+        Directory.CreateDirectory(directory);
+
+        var export = ExportFormats.Plan(formats ?? [], alpha, defaults?.Alpha ?? false,
+            name => Path.Combine(directory, name));
+
+        var (videos, report) = encoder.ExportFastest(
+            loaded,
+            new SweepSpec
+            {
+                Composition = composition,
+                Width = width,
+                Height = height,
+                Scale = scale,
+                Times = times,
+                SweepFps = rate,
+                Background = ToolSupport.ParseColor(background),
+                // export.Alpha, not the raw argument: the targets were built against this, and a
+                // render that disagreed with them would write a "mask" that was not one.
+                Alpha = export.Alpha,
+                ShowBackground = showBackground,
+            },
+            export.Targets, rate, workers, cut.RenderLog);
+
+        return JsonSerializer.Serialize(new
+        {
+            composition = report.Composition,
+            directory,
+            alpha = export.Alpha,
+            frames = videos[0].Frames,
+            seconds = Math.Round(videos[0].Seconds, 6),
+            fps = rate,
+            files = export.Targets.Zip(videos, (target, video) => new
+            {
+                format = target.Name,
+                path = video.Path,
+                bytes = video.Bytes,
+                codec = $"{video.Codec} ({target.Codec.Encoder})",
+                pixelFormat = video.PixelFormat,
+                note = video.Note,
+            }),
+            timing = Timing(plan),
+            backdrop = ToolSupport.Backdrop(loaded, showBackground),
+            cost = ToolSupport.Cost(report),
+        }, JsonOpts.Default);
+    }
+
+    [McpServerTool(Name = "list_formats"),
+     Description("Every format export can write, and what each one gives you.")]
+    public static string ListFormats() =>
+        JsonSerializer.Serialize(new { formats = ExportFormats.Describe() }, JsonOpts.Default);
 
     /// <summary>The alpha mode a caller named. Spelled forgivingly, because "matte-below" and
     /// "matteBelow" are the same request.</summary>
@@ -328,8 +446,9 @@ public static class RenderTools
             "embedded" or "channel" or "alpha" => AlphaMode.Embedded,
             "mattebelow" or "matte" or "vstack" or "stacked" or "below" => AlphaMode.MatteBelow,
             "matteright" or "hstack" or "sidebyside" or "right" => AlphaMode.MatteRight,
+            "maskonly" or "mask" or "alphaonly" or "luma" => AlphaMode.MaskOnly,
             _ => throw new ArgumentException(
-                $"Unknown alphaMode '{value}'. Use embedded, matteBelow or matteRight.", nameof(value)),
+                $"Unknown alphaMode '{value}'. Use embedded, matteBelow, matteRight or mask.", nameof(value)),
         };
     }
 

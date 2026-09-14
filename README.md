@@ -16,7 +16,7 @@ for nothing. CupriCut needs no browser at all.
 
 > **Status: Milestone 1 + 1b are in.** The renderer, the MCP server, the CLI, the project file and
 > the Docker image all work: `render_frame`, `contact_sheet`, `render_frames`, `render_video`,
-> `probe`, `list_fonts`, and the five project tools. Still to come are the timeline layer
+> `export`, `probe`, `list_fonts`, and the five project tools. Still to come are the timeline layer
 > (`data-start` / `data-duration`), `inspect`, `lint` and the interaction track — see
 > [PLAN.md](PLAN.md) for the build order and [docs/SCOPE.md](docs/SCOPE.md) for the reasoning and
 > the measurements behind it.
@@ -90,6 +90,8 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `contact_sheet` | N frames tiled into one timestamped PNG — an agent reads one image and sees a whole motion | **in** |
 | `render_frames` | the image sequence, encoded on the thread pool | **in** |
 | `render_video` | raw RGBA into ffmpeg; `alpha` gives a transparent clear, embedded or as a matte | **in** |
+| `export` | a LIST of outcomes — mp4, h265, webm, mov, gif, frames, mask, matte — all from one sweep | **in** |
+| `list_formats` | what each format gives you, for choosing between them | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
 | `calibrate` | what this ffmpeg can really do, and the fastest render parallelism | **in** |
@@ -221,6 +223,50 @@ one jumps the preview to its moment.
 
 Each note also records the **frame number at the rate it was made at** — stamped, not derived on
 read, so changing the project's fps later cannot silently renumber what the reviewer actually saw.
+
+### One render, every format you need
+
+`export` takes a list of outcomes rather than a codec argument:
+
+```
+cupricut export --composition lower-third.cut.json --formats mp4,mask,gif,frames --no-background
+
+  mp4     mp4.mp4              26,135 bytes  yuv420p
+  mask    mask.mp4              8,677 bytes  yuv420p
+  gif     gif.gif              90,110 bytes  bgra
+  frames  frame_%05d.png      875,075 bytes  rgba
+```
+
+Four files, **one sweep**. A frame written to four pipes costs no more to produce than a frame
+written to one, and rendering is what a clip costs — so the second format is very nearly free.
+
+Sharing the render means sharing its alpha, which is exactly what the useful pair needs. With alpha
+on, a format that cannot carry an alpha channel keeps the straight colour and goes black where
+nothing was drawn; the mask is the alpha alone. That is the colour-and-matte pair every editor keys:
+
+![The colour half and its mask](docs/keying-pair.png)
+
+Asking for a mask *is* asking for a transparent render, so it is inferred rather than demanded
+twice. An explicit `alpha:false` beside one is a contradiction, and is refused.
+
+### The backdrop is a flag, not a second file
+
+The same composition is wanted two ways: over its own background for review, where someone has to
+judge the colours against something, and over nothing for the edit. Authoring that twice means two
+files that drift. Mark the backdrop instead:
+
+```html
+<div --cupricut-background="studio gradient" class="backdrop"></div>
+```
+
+and turn it off per render — `showBackground:false`, `--no-background`, or the checkbox in the
+window. Every render answer says what the marked backdrop did, so "I asked for no background and
+got one" has an answer.
+
+The mechanism was measured rather than assumed, and the obvious one does not work: the engine parses
+the attribute perfectly, but a CSS attribute selector on it matches nothing and fails **silently**.
+An inline `display:none` works, and beats an author's own `display` rule — which is what makes it
+safe to apply to markup CupriCut did not write.
 
 Built on **CupriFace 0.24.1**. The GUI is itself a `CupriApp` — CupriCut's interface is drawn by the
 engine CupriCut renders with.

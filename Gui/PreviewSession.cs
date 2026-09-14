@@ -46,14 +46,30 @@ public sealed class PreviewSession : IDisposable
     public int Height { get; }
     public PurityVerdict Purity { get; }
 
+    /// <summary>Whether this session was opened with the backdrop turned off. Compared against the
+    /// model each time round the render loop: they differing is what reopens the document.</summary>
+    public bool BackdropHidden { get; init; }
+
+    /// <summary>The elements this composition marks as its backdrop. Empty for most compositions,
+    /// which is how the window knows not to offer a switch that would do nothing.</summary>
+    public IReadOnlyList<BackdropElement> Backdrops { get; init; } = [];
+
     /// <summary>Frames rendered by the most recent <see cref="RenderAt"/> — one for a pure
     /// composition, however many were walked through for an impure one.</summary>
     public int LastCost { get; private set; }
 
     /// <summary>Open a composition and settle it, once.</summary>
-    public static PreviewSession Open(CupriCutService cut, string composition, int width, int height, SKColor clear)
+    public static PreviewSession Open(CupriCutService cut, string composition, int width, int height, SKColor clear) =>
+        Open(cut, composition, width, height, clear, showBackground: null);
+
+    /// <summary>Open a composition and settle it, once.</summary>
+    /// <param name="showBackground">Whether the elements marked <c>--cupricut-background</c> are
+    /// drawn. Fixed for the life of the session, because it is a change to the MARKUP: flipping it
+    /// means opening the document again, which is what the render loop does.</param>
+    public static PreviewSession Open(CupriCutService cut, string composition, int width, int height,
+        SKColor clear, bool? showBackground)
     {
-        var loaded = cut.LoadComposition(composition);
+        var loaded = Backdrop.Resolve(cut.LoadComposition(composition), showBackground);
         var defaults = loaded.Defaults;
         var w = width > 0 ? width : defaults?.Width > 0 ? defaults.Width : cut.Options.DefaultWidth;
         var h = height > 0 ? height : defaults?.Height > 0 ? defaults.Height : cut.Options.DefaultHeight;
@@ -69,7 +85,11 @@ public sealed class PreviewSession : IDisposable
                 ?? throw new InvalidOperationException($"Could not create a {w}x{h} preview surface.");
 
             return new PreviewSession(document, surface, composition, w, h, clear,
-                defaults?.Fps ?? cut.Options.DefaultFps, Services.Purity.Analyse(loaded));
+                defaults?.Fps ?? cut.Options.DefaultFps, Services.Purity.Analyse(loaded))
+            {
+                BackdropHidden = loaded.BackdropHidden,
+                Backdrops = loaded.Backdrops,
+            };
         }
         catch
         {

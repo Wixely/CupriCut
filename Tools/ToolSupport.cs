@@ -104,6 +104,23 @@ internal static class ToolSupport
         fontProblems = report.FontProblems.Count == 0 ? null : report.FontProblems,
     };
 
+    /// <summary>What the composition's marked backdrop did on this render, or null when it marks
+    /// none - a composition with no backdrop should not grow a field saying so on every answer.
+    /// Reported even when it was shown, because "I asked for no background and got one" is the
+    /// question this field exists to answer.</summary>
+    public static object? Backdrop(Composition composition, bool? asked)
+    {
+        var marked = composition.Backdrops;
+        if (marked.Count == 0) return null;
+
+        return new
+        {
+            marked = marked.Count,
+            shown = asked ?? composition.Defaults?.ShowBackground ?? true,
+            elements = marked.Select(e => e.Describe()),
+        };
+    }
+
     public static string Seconds(double t) => t.ToString("0.###", CultureInfo.InvariantCulture);
 
     /// <summary>A file name that sorts in frame order and says what it is.</summary>

@@ -289,8 +289,14 @@ public sealed class StudioTests
     {
         // Wait for the first frame, not merely for the Rendering flag: the frame arriving is what
         // settles the window, and asserting before it races the render thread.
+        //
+        // And ASSERT that it arrived. This waited and then carried on regardless, which is how a
+        // preview that never published its first frame passed every test in this file - the window
+        // sat on the placeholder for ever and nothing here minded.
         var deadline = DateTime.UtcNow.AddSeconds(10);
         while (!model.HasFrame && DateTime.UtcNow < deadline) Thread.Sleep(5);
+        Assert.True(model.HasFrame, $"no frame was ever published. Status: {model.Status}");
+
         while (model.Rendering && DateTime.UtcNow < deadline) Thread.Sleep(5);
         Thread.Sleep(60);
     }
@@ -485,6 +491,9 @@ public sealed class StudioTests
             HasFrame = true, Marking = true,
             PendingNote = "logo should land before the subtitle",
             Status = "t = 1.2s · swept 37 frames in 310ms",
+            HasBackdrop = true,
+            ShowBackground = true,
+            ExportFormat = "mp4+mask",
             EditingId = "a1",
             EditingNote = "logo enters too late - land it before the subtitle",
             Annotations =

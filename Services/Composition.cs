@@ -19,6 +19,15 @@ public sealed record Composition(
     /// the caller left out - never overriding anything the caller gave.</summary>
     public CutProject? Project { get; init; }
 
+    /// <summary>Whether <see cref="Backdrop.Hidden"/> has already rewritten <see cref="Html"/>.
+    /// Carried rather than re-detected so a composition that passes through two resolution points
+    /// - the encoder's and the sweep's - is not edited twice.</summary>
+    public bool BackdropHidden { get; init; }
+
+    /// <summary>Elements the author marked as the backdrop. Read off the ORIGINAL markup, so this
+    /// still lists them once they are hidden.</summary>
+    public IReadOnlyList<BackdropElement> Backdrops => Backdrop.Find(Html);
+
     public RenderSettings? Defaults => Project?.Render;
 }
 

@@ -107,13 +107,33 @@ built on, so it goes first.
     It found both of the things it was built for without being told: vp9 drops alpha on this ffmpeg,
     and the best parallelism here is 8 — not the 12 `ProcessorCount` suggested, nor the 6 the
     built-in guess used. `--apply` writes the measured count to `CupriCut.Local.json`.
-18. **Special elements.** `--cupricut-background` marks an element as the backdrop, so it can be
-    shown or hidden per render: the same composition gives an opaque video for review and a
-    transparent one for the edit. Recognised, reported by `inspect`, and toggled per render.
-19. **Mask output.** A black-and-white alpha video beside (or instead of) the colour, for the many
-    editors that will not take a transparent one.
-20. **Export formats.** One verb, a list of targets — mp4, webm, mov, gif, PNG sequence, mask,
-    matte — rather than a codec argument people have to already understand.
+18. ~~**Special elements.**~~ **Done.** `--cupricut-background` marks an element as the backdrop,
+    so the same composition gives an opaque clip for review and a transparent one for the edit.
+    Every render answer reports what the marked backdrop did, and the window gets a checkbox.
+
+    The mechanism was measured rather than assumed, and the obvious one does not work: the engine
+    parses the attribute perfectly, but a CSS attribute selector on it —
+    `[--cupricut-background] { display:none }` — matches nothing and fails SILENTLY. An inline
+    `style="display:none"` works, and beats an author's own `display` rule on the same element,
+    which is what makes it safe to apply to markup CupriCut did not write. Only the opening tag is
+    touched, so an element that comes back when the flag flips is the one that was never hidden.
+19. ~~**Mask output.**~~ **Done.** `alphaextract` to grey, as a fourth `AlphaMode`. White where the
+    composition is opaque, black where it is not, no colour at all — the travelling matte an editor
+    asks for when its format will not take a transparent clip. A mask of an OPAQUE render is a flat
+    white rectangle, so that is refused rather than written.
+20. ~~**Export formats.**~~ **Done.** One verb, a list of outcomes — mp4, h265, webm, mov, gif,
+    frames, mask, matte — each carrying the codec, pixel format and alpha handling that outcome
+    needs. "h264 in an mp4 container at yuv420p" is a true description of what someone wants and a
+    useless way to ask for it.
+
+    **The targets share the render**, which is the point: a frame written to four pipes costs no
+    more to produce than a frame written to one, and rendering is what a clip costs. mp4 + mask +
+    gif + frames from one 90-frame sweep took 4.5 s in total. Sharing the render means sharing its
+    alpha, and that is exactly right for the pair an editor keys: with alpha on, a format that
+    cannot carry an alpha channel keeps the straight colour and goes black where nothing was drawn.
+
+    Asking for a mask IS asking for a transparent render, so alpha is inferred rather than demanded
+    twice — but an explicit `alpha:false` beside one is a contradiction and is still refused.
 21. **Resolution and scaling in the project.** Width, height and the `PresentInfo` mode
     (responsive / fixed / hybrid / adaptive) stored as project data, so "render this at 4K the way
     it looks at 1080p" is a setting rather than a re-authoring.

@@ -6,8 +6,15 @@
   The font is registered by the server (Cut:FontDirectories), not resolved from the machine. Under
   FontPolicy.RegisteredOnly a family nothing covers is an error naming the family, so "Noto Sans"
   here means the file in fonts/, on every machine.
+
+  The gradient behind it is marked --cupricut-background, so the SAME file gives an opaque clip to
+  review and a transparent one to drop over footage: render with showBackground:false, or untick
+  Background in the window. It is its own element rather than a background on .stage because
+  hiding .stage would take the layout with it.
 -->
 <div class="stage">
+  <div --cupricut-background="studio gradient" class="backdrop"></div>
+
   <div class="third">
     <div class="bar">
       <div class="text">
@@ -26,6 +33,15 @@
     display: flex;
     align-items: flex-end;
     font-family: "Noto Sans";
+    position: relative;
+  }
+
+  .backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
     background: linear-gradient(160deg, #10131a 0%, #1d2432 100%);
   }
 

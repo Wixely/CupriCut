@@ -106,7 +106,14 @@ built on, so it goes first.
     probes the result, and times the render at every plausible worker count. Errors-only by default.
     It found both of the things it was built for without being told: vp9 drops alpha on this ffmpeg,
     and the best parallelism here is 8 — not the 12 `ProcessorCount` suggested, nor the 6 the
-    built-in guess used. `--apply` writes the measured count to `CupriCut.Local.json`.
+    built-in guess used.
+
+    **Applying it is the product, not a footnote.** `--apply`, the button in the window and
+    `apply:true` on the tool all write one key to `CupriCut.Local.json`, the per-machine layer that
+    every host loads with `reloadOnChange` — so it takes effect in the running process and on every
+    run after, with no config editing. The window's button used to set it for the session and print
+    "run cupricut calibrate --apply to make it permanent", which is not a button that applies a
+    measurement; it is a button that tells you how to.
 18. ~~**Special elements.**~~ **Done.** `--cupricut-background` marks an element as the backdrop,
     so the same composition gives an opaque clip for review and a transparent one for the edit.
     Every render answer reports what the marked backdrop did, and the window gets a checkbox.

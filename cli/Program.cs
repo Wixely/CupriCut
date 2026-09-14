@@ -255,47 +255,17 @@ public static class Program
 
             if (opts.Has("apply"))
             {
-                var written = ApplyWorkers(cut.ContentRoot, best);
-                Console.WriteLine($"  Written to {written} as Cut:RenderWorkers.");
+                var written = LocalSettings.SaveRenderWorkers(cut.ContentRoot, best);
+                Console.WriteLine($"  Written to {written} as Cut:RenderWorkers. It applies from now on.");
             }
             else if (best != cut.Options.RenderWorkers)
             {
-                Console.WriteLine($"  Re-run with --apply to write it, or set Cut:RenderWorkers to {best} yourself.");
+                Console.WriteLine($"  Re-run with --apply to save it - no config editing, and it applies from then on.");
             }
         }
 
         // Non-zero when something failed, so a CI step can gate on it.
         return report.AllPassed ? 0 : 4;
-    }
-
-    /// <summary>
-    /// Persist the measured worker count into the LOCAL config layer.
-    ///
-    /// <para>CupriCut.Local.json rather than CupriCut.json: the measurement belongs to this machine,
-    /// not to the repository, and the local file is already the documented per-machine override and
-    /// already ignored by git. Only the one key is touched, so anything else there survives.</para>
-    ///
-    /// <para>Deliberately CLI-only. The MCP tool reports the number and does not write it - the
-    /// three roots say what an agent may write to, and the application's own configuration is not
-    /// one of them.</para>
-    /// </summary>
-    private static string ApplyWorkers(string contentRoot, int workers)
-    {
-        var path = Path.Combine(contentRoot, "CupriCut.Local.json");
-
-        var root = File.Exists(path)
-            ? System.Text.Json.Nodes.JsonNode.Parse(File.ReadAllText(path))?.AsObject() ?? []
-            : [];
-
-        if (root["Cut"] is not System.Text.Json.Nodes.JsonObject cutSection)
-        {
-            cutSection = [];
-            root["Cut"] = cutSection;
-        }
-        cutSection["RenderWorkers"] = workers;
-
-        File.WriteAllText(path, root.ToJsonString(new System.Text.Json.JsonSerializerOptions { WriteIndented = true }));
-        return path;
     }
 
     private static int Fonts(CupriCutService cut, CommandLine opts)

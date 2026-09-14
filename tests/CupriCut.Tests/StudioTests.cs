@@ -305,12 +305,22 @@ public sealed class StudioTests
     /// carrying it would. The window's own click path is the engine's; this is about the handler.</summary>
     private static void Activate(CupriDocument doc, StudioApp app, string attribute, string value)
     {
+        // Re-bind first: rendering does not re-read the model. The desktop host re-binds on its own
+        // timer, which is why a live window keeps up; a test that skips it is looking at the layout
+        // from before whatever it just changed. An element revealed by a model change is still laid
+        // out at zero size, and the click lands on whatever is behind it - which fails somewhere
+        // else entirely, a long way from the cause.
+        doc.Bind(app.Model!);
         using (doc.RenderToImage(app.Width, app.Height)) { }
+
         var box = LocateByAttribute(doc.Root, 0, 0, attribute, value)
             ?? throw new InvalidOperationException($"no element with {attribute}=\"{value}\"");
-        var cx = box.MidX;
-        var cy = box.MidY;
-        doc.DispatchClick(cx, cy);
+
+        if (box.Width <= 0 || box.Height <= 0)
+            throw new InvalidOperationException(
+                $"{attribute}=\"{value}\" laid out at {box.Width}x{box.Height}, so a click cannot land on it.");
+
+        doc.DispatchClick(box.MidX, box.MidY);
     }
 
     /// <summary>An element's box in absolute coordinates - accumulated from the root exactly as

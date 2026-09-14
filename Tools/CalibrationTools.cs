@@ -29,15 +29,31 @@ public static class CalibrationTools
 
         Shows only failures by default; pass all:true for the whole table. Run it after changing
         ffmpeg, or when a render produces something unexpected.
+
+        apply:true writes the measured worker count to CupriCut.Local.json - the per-machine
+        configuration layer - and it takes effect immediately and on every later run. This is the
+        one thing here that writes CupriCut's own configuration rather than the output root, and it
+        writes exactly one integer that was measured on this machine. Without it the number is
+        reported and nothing changes.
         """)]
     public static string Calibrate(
         CupriCutService cut,
         VideoEncoder encoder,
         [Description("Show every check rather than only the failures.")] bool all = false,
-        [Description("Skip the parallelism benchmark, which is the slow part (a few seconds).")] bool skipWorkerBenchmark = false)
+        [Description("Skip the parallelism benchmark, which is the slow part (a few seconds).")] bool skipWorkerBenchmark = false,
+        [Description("Save the measured worker count so it is used from now on. Writes one key to CupriCut.Local.json and takes effect without a restart.")] bool apply = false)
     {
         var calibrator = new Calibrator(cut, encoder, cut.RenderLog);
         var report = calibrator.Run(tuneWorkers: !skipWorkerBenchmark);
+
+        string? saved = null;
+        if (apply && calibrator.BestWorkers is { } measured)
+        {
+            saved = LocalSettings.SaveRenderWorkers(cut.ContentRoot, measured);
+            // In memory as well: the config file watcher is debounced, and a render started in the
+            // next few hundred milliseconds should already use the measured number.
+            cut.Options.RenderWorkers = measured;
+        }
 
         return JsonSerializer.Serialize(new
         {
@@ -50,9 +66,10 @@ public static class CalibrationTools
             configuredWorkers = cut.Options.RenderWorkers == 0
                 ? $"0 (using the built-in guess of {ParallelRenderer.DefaultWorkers})"
                 : cut.Options.RenderWorkers.ToString(),
-            apply = calibrator.BestWorkers is { } best && best != cut.Options.RenderWorkers
-                ? $"Set Cut:RenderWorkers to {best} to use it, or pass workers:{best} per render."
-                : null,
+            saved,
+            apply = saved is not null || calibrator.BestWorkers is not { } best || best == cut.Options.RenderWorkers
+                ? null
+                : $"Call calibrate again with apply:true to use {best} from now on, or pass workers:{best} per render.",
             checks = (all ? report.Checks : report.Failures).Select(c => new
             {
                 c.Group,

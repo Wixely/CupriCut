@@ -97,8 +97,12 @@ public sealed partial class StudioController : IDisposable
         _model.OutputRootPath = _cut.OutputRoot;
         _model.ProjectRootPath = _cut.ProjectRoot;
         _model.CompositionRootPaths = string.Join("  ", _cut.CompositionRoots);
+        // Distinguishes a number that was MEASURED on this machine from one that was configured
+        // by hand - the calibrate tab writes to the local layer, and knowing which you are looking
+        // at is the difference between trusting it and re-running the benchmark.
+        var measured = File.Exists(LocalSettings.PathFor(_cut.ContentRoot));
         _model.WorkersSetting = options.RenderWorkers > 0
-            ? $"{options.RenderWorkers} (from Cut:RenderWorkers)"
+            ? $"{options.RenderWorkers} ({(measured ? $"measured, saved in {LocalSettings.FileName}" : "from Cut:RenderWorkers")})"
             : $"{ParallelRenderer.DefaultWorkers} (built-in guess; calibrate to measure this machine)";
         _model.EngineVersion = CupriCutService.EngineVersion;
     }
@@ -397,19 +401,44 @@ public sealed partial class StudioController : IDisposable
         })];
     }
 
-    /// <summary>Use the measured worker count for the rest of this session.
+    /// <summary>
+    /// Use the measured worker count, and keep using it.
     ///
-    /// <para>In memory only: writing it to CupriCut.Local.json is the CLI's job (cupricut calibrate
-    /// --apply), because the window is not the place to be editing configuration behind someone's
-    /// back. The status strip says so rather than leaving it to be discovered.</para></summary>
+    /// <para>Written to <c>CupriCut.Local.json</c>, which every host loads with
+    /// <c>reloadOnChange</c>, so it takes effect in this running process and survives a restart.
+    /// This used to set it for the session and then tell you to go and run a CLI command, which is
+    /// not applying a measurement - it is describing how to. Measuring the machine and then asking
+    /// someone to hand-edit a config file is most of a feature.</para>
+    ///
+    /// <para>It writes CupriCut's own configuration, which the MCP tools deliberately may not: the
+    /// three roots say where an agent can write, and this is not one of them. A person clicking a
+    /// button in the window is a different question from an agent editing the server it is talking
+    /// to, and the answer differs.</para>
+    /// </summary>
     private void ApplyWorkers()
     {
         if (_model.RecommendedWorkers <= 0) return;
-        _cut.Options.RenderWorkers = _model.RecommendedWorkers;
-        _model.WorkersSetting = $"{_model.RecommendedWorkers} (measured, this session only)";
-        _model.CalibrationSummary =
-            $"Using {_model.RecommendedWorkers} workers for this session. " +
-            "Run \"cupricut calibrate --apply\" to make it permanent.";
+        var workers = _model.RecommendedWorkers;
+
+        // In memory as well as on disk: the file watcher is debounced, and a render started in the
+        // next few hundred milliseconds should already use the new number.
+        _cut.Options.RenderWorkers = workers;
+
+        try
+        {
+            var path = LocalSettings.SaveRenderWorkers(_cut.ContentRoot, workers);
+            _model.WorkersSetting = $"{workers} (measured on this machine)";
+            _model.CalibrationSummary = $"Using {workers} workers, saved to {Path.GetFileName(path)}. It applies from now on.";
+            _log.LogInformation("Render workers set to {Workers} and written to {Path}", workers, path);
+        }
+        catch (Exception ex)
+        {
+            // A measurement that cannot be written is still worth having for the session, so keep
+            // it and say exactly what went wrong rather than quietly doing half the job.
+            _model.WorkersSetting = $"{workers} (measured, this session only)";
+            _model.CalibrationSummary = $"Using {workers} workers for this session - could not save it: {ex.Message}";
+            _log.LogWarning(ex, "Could not persist render workers");
+        }
     }
 
     // ---- the region drag --------------------------------------------------------------------

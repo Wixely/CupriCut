@@ -144,7 +144,8 @@ public sealed class Calibrator(CupriCutService cut, VideoEncoder encoder, ILogge
             $"{best.Workers} workers ({speedup:0.0}x over one; the built-in default is {ParallelRenderer.DefaultWorkers})",
             best.Workers == ParallelRenderer.DefaultWorkers
                 ? null
-                : $"Set Cut:RenderWorkers to {best.Workers} - the built-in guess of {ParallelRenderer.DefaultWorkers} is not this machine's best.");
+                : $"The built-in guess of {ParallelRenderer.DefaultWorkers} is not this machine's best. " +
+                  $"Apply it in the window, or run cupricut calibrate --apply, and {best.Workers} is saved and used from then on.");
     }
 
     /// <summary>Time the renderer at a spread of worker counts.</summary>

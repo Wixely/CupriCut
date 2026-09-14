@@ -186,7 +186,7 @@ open a PNG somewhere else and then put the problem into prose.
 
 The **Settings** page has three tabs — the MCP endpoint with copyable URLs, the paths and render
 settings in force, and **Calibrate**, which runs the capability checks and the parallelism benchmark
-in the window and shows the failures:
+in the window, shows the failures, and **saves the measured worker count** when you take it:
 
 ![Calibration in the settings page](docs/settings.png)
 
@@ -335,8 +335,13 @@ Best render parallelism: 8 workers.
 
 It encodes a two-frame clip per codec and per alpha mode **with the real arguments CupriCut
 issues**, then probes what came out — and times a short render at every plausible worker count.
-Failures only by default; `--all` for the whole table, `--apply` to write the measured worker count
-into `CupriCut.Local.json`.
+Failures only by default; `--all` for the whole table.
+
+**A measurement you have to hand-edit into a config file is most of a feature**, so `--apply` saves
+it — and so does the button in the window, and `apply:true` on the MCP tool. It writes one key to
+`CupriCut.Local.json`, the per-machine layer, which every host loads with `reloadOnChange`: the
+running process picks it up without a restart, and so does every run after. Nothing else in that
+file is touched, and a file that is not valid JSON is refused rather than overwritten.
 
 Both things it checks exist because they were assumed and were false: vp9 accepts `yuva420p` and
 writes `yuv420p`, and `Environment.ProcessorCount` was the *slowest* parallelism on this machine.

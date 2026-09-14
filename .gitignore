@@ -35,10 +35,9 @@ frames/
 # display in CI, so the test renders it headlessly and this is the artifact.
 !docs/*.png
 
-# Projects are the read-write root: an agent's working files, not the repository's.
-projects/*
-# ...except the worked example, so a fresh clone has something to render.
-!projects/demo.cut.json
+# Projects are the read-write root: an agent's working files, not the repository's. The worked
+# examples live in examples/ and are copied into it at build time, so nothing here is committed.
+projects/
 
 # Fonts are licensed separately and are a deliberate decision every time, never an accident.
 *.ttf

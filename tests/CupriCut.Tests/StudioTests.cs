@@ -1,6 +1,7 @@
 using CupriCut.Gui;
 using CupriCut.Services;
 using CupriFace;
+using CupriFace.Interaction;
 using Microsoft.Extensions.Logging.Abstractions;
 using SkiaSharp;
 using Xunit;
@@ -102,6 +103,145 @@ public sealed class StudioTests
     {
         // Before the first layout the node has no size, and a pointer can still arrive.
         Assert.Equal((0d, 0d), StudioController.Normalise(SKRect.Create(0, 0, 0, 0), 10, 10));
+    }
+
+    // ---- the drag, driven through the same entry point the window uses -----------------------
+
+    [Fact]
+    public void Dragging_a_box_on_the_preview_writes_an_annotation_to_the_project()
+    {
+        // DispatchPointer is what a desktop host calls for a real mouse, so this exercises the whole
+        // path - hit testing, the capture OnMark takes on Down, the coordinate normalisation and the
+        // write - without needing a window or a pointer device.
+        using var harness = new Harness();
+        harness.Cut.SaveProject("hero", new CutProject
+        {
+            Name = "Hero",
+            Html = Harness.Keyframed,
+            Render = new RenderSettings { Width = 1280, Height = 720, Duration = 3 },
+        });
+
+        var model = new StudioModel();
+        var controller = new StudioController(harness.Cut, model, NullLogger<StudioController>.Instance);
+        var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
+
+        using var doc = Open(app);
+        controller.Attach(doc);
+
+        // Open the project and arm marking, the way the two clicks do.
+        doc.OnAction("data-cut-open", _ => true);   // no-op: the controller's handler is already registered
+        Activate(doc, app, "data-cut-open", "hero.cut.json");
+        Activate(doc, app, "data-cut-action", "mark");
+        Assert.True(model.Marking,
+            $"marking did not arm. selected={model.Selected ?? "(null)"} projects={model.Projects.Count} status={model.Status}");
+
+        model.Time = 1.5;
+        model.PendingNote = "logo enters too late";
+
+        // Lay out, then drag across the middle of the preview.
+        using (doc.RenderToImage(app.Width, app.Height)) { }
+        var stage = LocateSurface(doc.Root, 0, 0, StudioApp.PreviewKey)!.Value;
+        var x0 = stage.Left + stage.Width * 0.25f;
+        var y0 = stage.Top + stage.Height * 0.30f;
+        var x1 = stage.Left + stage.Width * 0.75f;
+        var y1 = stage.Top + stage.Height * 0.70f;
+
+        doc.DispatchPointer(1, PointerPhase.Down, x0, y0);
+        doc.DispatchPointer(1, PointerPhase.Move, (x0 + x1) / 2, (y0 + y1) / 2);
+        doc.DispatchPointer(1, PointerPhase.Move, x1, y1);
+        doc.DispatchPointer(1, PointerPhase.Up, x1, y1);
+
+        var saved = harness.Cut.LoadProject("hero");
+        var annotation = Assert.Single(saved.Annotations);
+
+        Assert.Equal("logo enters too late", annotation.Note);
+        Assert.Equal("reviewer", annotation.Author);
+        Assert.Equal(1.5, annotation.Time, 6);
+
+        // The region is where it was drawn, to within a pixel of the preview box.
+        Assert.Equal(0.25, annotation.X, 2);
+        Assert.Equal(0.30, annotation.Y, 2);
+        Assert.Equal(0.50, annotation.W, 2);
+        Assert.Equal(0.40, annotation.H, 2);
+
+        // ...and in the project's own pixels, which is what the agent is told.
+        var (px, py, pw, ph) = annotation.InPixels(1280, 720);
+        Assert.InRange(px, 316, 324);
+        Assert.InRange(py, 212, 220);
+        Assert.InRange(pw, 636, 644);
+        Assert.InRange(ph, 284, 292);
+
+        // The window reflects it, and marking disarms so the next drag is deliberate.
+        Assert.Single(model.Annotations);
+        Assert.False(model.Marking);
+        Assert.Equal(string.Empty, model.PendingNote);
+    }
+
+    [Fact]
+    public void A_tap_on_the_preview_is_not_an_annotation()
+    {
+        using var harness = new Harness();
+        harness.Cut.SaveProject("hero", new CutProject { Html = Harness.Keyframed, Render = new RenderSettings() });
+
+        var model = new StudioModel();
+        var controller = new StudioController(harness.Cut, model, NullLogger<StudioController>.Instance);
+        var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
+        using var doc = Open(app);
+        controller.Attach(doc);
+        Activate(doc, app, "data-cut-open", "hero.cut.json");
+        Activate(doc, app, "data-cut-action", "mark");
+        using (doc.RenderToImage(app.Width, app.Height)) { }
+
+        var stage = LocateSurface(doc.Root, 0, 0, StudioApp.PreviewKey)!.Value;
+        var x = stage.MidX;
+        var y = stage.MidY;
+
+        doc.DispatchPointer(1, PointerPhase.Down, x, y);
+        doc.DispatchPointer(1, PointerPhase.Up, x + 1, y + 1);
+
+        Assert.Empty(harness.Cut.LoadProject("hero").Annotations);
+        Assert.Contains("tap", model.Status, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Fire the controller's handler for a data- attribute, the way a click on the element
+    /// carrying it would. The window's own click path is the engine's; this is about the handler.</summary>
+    private static void Activate(CupriDocument doc, StudioApp app, string attribute, string value)
+    {
+        using (doc.RenderToImage(app.Width, app.Height)) { }
+        var box = LocateByAttribute(doc.Root, 0, 0, attribute, value)
+            ?? throw new InvalidOperationException($"no element with {attribute}=\"{value}\"");
+        var cx = box.MidX;
+        var cy = box.MidY;
+        doc.DispatchClick(cx, cy);
+    }
+
+    /// <summary>An element's box in absolute coordinates - accumulated from the root exactly as
+    /// HitTesting does, because a pointer arrives in that space and a parent-relative box does not
+    /// describe where anything actually is.</summary>
+    private static SKRect? LocateByAttribute(CupriFace.Dom.RenderNode node, float ox, float oy, string attribute, string value)
+    {
+        var ax = ox + node.X;
+        var ay = oy + node.Y;
+        if (node.Element?.GetAttribute(attribute) == value) return SKRect.Create(ax, ay, node.Width, node.Height);
+
+        var cx = ax - (node.IsScrollableX ? node.EffectiveScrollX : 0f);
+        var cy = ay - (node.IsScrollable ? node.EffectiveScrollY : 0f);
+        foreach (var child in node.Children)
+            if (LocateByAttribute(child, cx, cy, attribute, value) is { } hit) return hit;
+        return null;
+    }
+
+    private static SKRect? LocateSurface(CupriFace.Dom.RenderNode node, float ox, float oy, string key)
+    {
+        var ax = ox + node.X;
+        var ay = oy + node.Y;
+        if (node.SurfaceKey == key) return SKRect.Create(ax, ay, node.Width, node.Height);
+
+        var cx = ax - (node.IsScrollableX ? node.EffectiveScrollX : 0f);
+        var cy = ay - (node.IsScrollable ? node.EffectiveScrollY : 0f);
+        foreach (var child in node.Children)
+            if (LocateSurface(child, cx, cy, key) is { } hit) return hit;
+        return null;
     }
 
     // ---- annotations -------------------------------------------------------------------------

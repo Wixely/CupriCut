@@ -251,20 +251,34 @@ public sealed class StudioController : IDisposable
         }
     }
 
-    /// <summary>The preview element's box, found by the surface key rather than by walking for a
-    /// class name — the engine already records which node owns a surface.</summary>
+    /// <summary>
+    /// The preview element's box in the same coordinates a pointer arrives in.
+    ///
+    /// <para><b>Absolute, not local.</b> <c>RenderNode.X</c> and <c>Y</c> are relative to the
+    /// PARENT, and the preview sits four levels deep, so using them raw put the box somewhere the
+    /// pointer never is — and every annotation would have been normalised against the wrong
+    /// rectangle and stored pointing at the wrong part of the frame. It rendered fine and it wrote
+    /// a plausible-looking region, which is exactly the kind of wrong that survives review.</para>
+    ///
+    /// <para>The origin is accumulated the way <c>HitTesting.Hit</c> accumulates it — including the
+    /// scroll offsets, since a scrolled ancestor shifts its children for the pointer too.</para>
+    /// </summary>
     private SKRect? FindPreviewBox()
     {
         if (_document is null) return null;
-        var node = FindSurface(_document.Root, StudioApp.PreviewKey);
-        return node is null ? null : SKRect.Create(node.X, node.Y, node.Width, node.Height);
+        return Locate(_document.Root, 0, 0, StudioApp.PreviewKey);
     }
 
-    private static RenderNode? FindSurface(RenderNode node, string key)
+    private static SKRect? Locate(RenderNode node, float originX, float originY, string key)
     {
-        if (node.SurfaceKey == key) return node;
+        var ax = originX + node.X;
+        var ay = originY + node.Y;
+        if (node.SurfaceKey == key) return SKRect.Create(ax, ay, node.Width, node.Height);
+
+        var childX = ax - (node.IsScrollableX ? node.EffectiveScrollX : 0f);
+        var childY = ay - (node.IsScrollable ? node.EffectiveScrollY : 0f);
         foreach (var child in node.Children)
-            if (FindSurface(child, key) is { } hit) return hit;
+            if (Locate(child, childX, childY, key) is { } hit) return hit;
         return null;
     }
 

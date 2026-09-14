@@ -60,9 +60,24 @@
   <ItemGroup>
     <!-- Fonts registered into every document. FontPolicy.RegisteredOnly is always on, so a server
          with no registered face fails every composition that does not carry its own @font-face. -->
-    <None Include="fonts\**" LinkBase="fonts" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="fonts\**" CopyToOutputDirectory="PreserveNewest" />
+
     <!-- The worked examples, so a fresh install has something to render. -->
-    <None Include="compositions\**" LinkBase="compositions" CopyToOutputDirectory="PreserveNewest" />
+    <None Include="compositions\**" CopyToOutputDirectory="PreserveNewest" />
+
+    <!-- ...and the same examples again as PROJECTS, so the studio window has something in its
+         picker on a first run. Without this it opens to an empty list and "save one with
+         save_project", which is no use to someone who just wants to look at it.
+
+         An explicit Link rather than LinkBase: LinkBase is silently ignored here, and the files
+         land at their SOURCE path - examples/ in the output rather than projects/ - which looks
+         like the copy simply did not happen. The two entries above never needed it only because
+         their source path already is their output path.
+
+         PreserveNewest, so a project edited in the output directory survives a rebuild. -->
+    <None Include="examples\**" CopyToOutputDirectory="PreserveNewest">
+      <Link>projects\%(RecursiveDir)%(Filename)%(Extension)</Link>
+    </None>
   </ItemGroup>
 
 </Project>

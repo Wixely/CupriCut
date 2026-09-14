@@ -1,0 +1,28 @@
+{
+  "cupricut": 1,
+  "name": "Lower third",
+  "description": "A broadcast lower third: the bar wipes in, the text rises behind it, an accent rule draws across.",
+  "html": "<div class=\"stage\">\n  <div class=\"third\">\n    <div class=\"bar\">\n      <div class=\"text\">\n        <div class=\"name\">Ada Lovelace</div>\n        <div class=\"role\">Analytical Engine &middot; Note G</div>\n      </div>\n    </div>\n    <div class=\"rule\"></div>\n  </div>\n</div>",
+  "css": ".stage {\n    width: 100%;\n    height: 100%;\n    display: flex;\n    align-items: flex-end;\n    font-family: \"Noto Sans\";\n    background: linear-gradient(160deg, #10131a 0%, #1d2432 100%);\n  }\n\n  .third {\n    margin: 0 0 96px 96px;\n    position: relative;\n  }\n\n  /* The bar wipes open from the left. Animating width means layout re-runs, which is what makes\n     the text behind it reveal rather than squash. */\n  .bar {\n    height: 104px;\n    overflow: hidden;\n    background: #f4f6fb;\n    border-radius: 4px;\n    animation: wipe 0.55s ease-out both;\n  }\n\n  .text {\n    padding: 18px 32px;\n    width: 520px;\n    animation: rise 0.6s ease-out 0.25s both;\n  }\n\n  .name {\n    font-size: 34px;\n    font-weight: 700;\n    color: #10131a;\n    letter-spacing: -0.4px;\n  }\n\n  .role {\n    font-size: 17px;\n    color: #5a6478;\n    margin-top: 6px;\n  }\n\n  .rule {\n    height: 5px;\n    margin-top: 10px;\n    border-radius: 3px;\n    background: #d9642a;\n    animation: draw 0.7s ease-out 0.45s both;\n  }\n\n  @keyframes wipe {\n    from { width: 0; }\n    to   { width: 584px; }\n  }\n\n  @keyframes rise {\n    from { opacity: 0; transform: translateY(28px); }\n    to   { opacity: 1; transform: translateY(0); }\n  }\n\n  @keyframes draw {\n    from { width: 0; opacity: 0; }\n    to   { width: 584px; opacity: 1; }\n  }",
+  "render": {
+    "width": 1280,
+    "height": 720,
+    "scale": 1,
+    "fps": 30,
+    "duration": 3.0,
+    "background": "#10131a",
+    "alpha": false,
+    "codec": "h264"
+  },
+  "assets": {},
+  "annotations": [],
+  "meta": {
+    "created": "2026-09-14T00:00:00+00:00",
+    "updated": "2026-09-14T00:00:00+00:00",
+    "engine": "CupriFace 0.24.1.0",
+    "notes": [
+      "Pure in t - every bit of it is @keyframes, so any frame could be sampled directly.",
+      "Try scrubbing to 0.55s: the bar has opened but the rule has not started."
+    ]
+  }
+}

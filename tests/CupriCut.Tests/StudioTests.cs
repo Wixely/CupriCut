@@ -504,6 +504,7 @@ public sealed class StudioTests
             HasBackdrop = true,
             ShowBackground = true,
             ExportFormat = "mp4+mask",
+            LastExportFolder = "output/hero_20260914-150735",
             EditingId = "a1",
             EditingNote = "logo enters too late - land it before the subtitle",
             Annotations =

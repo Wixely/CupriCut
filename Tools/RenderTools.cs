@@ -201,9 +201,11 @@ public static class RenderTools
         ClipPlan? plan = null;
         if (to > 0) times = ToolSupport.Range(from, to, rate);
         else (times, plan) = ClipPlanner.Plan(from, loaded.Defaults?.Duration ?? 1, rate);
+        // A named directory is used exactly as named; an unnamed one is stamped, so today's run
+        // does not quietly replace yesterday's.
         var stem = ToolSupport.SafeStem(outputDirectory ?? composition, "frames");
-        var directory = cut.ResolveWrite(Path.Combine(stem, ".keep"));
-        directory = Path.GetDirectoryName(directory)!;
+        var folder = OutputNaming.Explicit(outputDirectory) ? stem : OutputNaming.Run(stem);
+        var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(folder, ".keep")))!;
 
         var spec = new SweepSpec
         {
@@ -306,8 +308,12 @@ public static class RenderTools
         else times = ToolSupport.Range(from, to, rate);
         var mode = ParseAlphaMode(alphaMode);
         var picked = VideoEncoder.Resolve(codec ?? defaults?.Codec, transparent, mode);
+        // An explicit name is honoured exactly - something is probably expecting it. A name
+        // CupriCut chose carries the project and the moment, because renders are takes and takes
+        // accumulate.
         var stem = ToolSupport.SafeStem(output ?? composition, "render");
-        var path = cut.ResolveWrite(stem + picked.Extension);
+        var file = OutputNaming.Explicit(output) ? stem + picked.Extension : OutputNaming.File(stem, picked.Extension);
+        var path = cut.ResolveWrite(file);
 
         var (video, report) = encoder.EncodeFastest(
             loaded,
@@ -401,14 +407,16 @@ public static class RenderTools
         if (span > 0) (times, plan) = ClipPlanner.Plan(from, span, rate);
         else times = ToolSupport.Range(from, to, rate);
 
-        // Every file of one export lands in one directory named after the composition, because an
-        // export is one thing that happens to have several files in it.
+        // One export is one thing that happens to have several files in it, so it gets one
+        // folder. The moment goes on the FOLDER rather than on every file inside it - opening it
+        // should show hero_mp4.mp4 and hero_mask.mp4, not the same timestamp four times.
         var stem = ToolSupport.SafeStem(outputDirectory ?? composition, "export");
-        var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
+        var folder = OutputNaming.Explicit(outputDirectory) ? stem : OutputNaming.Run(stem);
+        var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(folder, ".keep")))!;
         Directory.CreateDirectory(directory);
 
         var export = ExportFormats.Plan(formats ?? [], alpha, defaults?.Alpha ?? false,
-            name => Path.Combine(directory, name));
+            name => Path.Combine(directory, stem + "_" + name));
 
         var (videos, report) = encoder.ExportFastest(
             loaded,

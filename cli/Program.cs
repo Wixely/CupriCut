@@ -115,8 +115,9 @@ public static class Program
         if (opts.Has("to")) times = Range(from, opts.Number("to", 1), fps);
         else (times, plan) = ClipPlanner.Plan(from, opts.Number("duration", loaded.Defaults?.Duration ?? 1), fps);
         var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
+        var folder = opts.Text("out") is { Length: > 0 } ? stem : OutputNaming.Run(stem);
 
-        var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
+        var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(folder, ".keep")))!;
         // Streamed in bounded memory - see FrameSequenceWriter. Collecting the run would need
         // 3.7 MB a frame, which a long sequence does not have.
         using var writer = new FrameSequenceWriter();
@@ -153,11 +154,12 @@ public static class Program
         var wanted = (opts.Text("formats") ?? "mp4")
             .Split(',', StringSplitOptions.RemoveEmptyEntries | StringSplitOptions.TrimEntries);
         var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
-        var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
+        var folder = opts.Text("out") is { Length: > 0 } ? stem : OutputNaming.Run(stem);
+        var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(folder, ".keep")))!;
         Directory.CreateDirectory(directory);
 
         var export = ExportFormats.Plan(wanted, opts.Has("alpha") ? true : null, defaults?.Alpha ?? false,
-            name => Path.Combine(directory, name));
+            name => Path.Combine(directory, stem + "_" + name));
 
         // export.Alpha rather than whatever Spec worked out from --alpha: the targets were built
         // against this value, and a render that disagreed would write a "mask" that was not one.
@@ -209,7 +211,9 @@ public static class Program
         var alphaMode = ParseAlphaMode(opts.Text("alpha-mode"));
         var codec = VideoEncoder.Resolve(opts.Text("codec") ?? defaults?.Codec, alpha, alphaMode);
         var stem = ProjectStem(opts.Text("out") ?? opts.Require("composition"));
-        var path = cut.ResolveWrite(stem + codec.Extension);
+        var path = cut.ResolveWrite(opts.Text("out") is { Length: > 0 }
+            ? stem + codec.Extension
+            : OutputNaming.File(stem, codec.Extension));
 
         var (video, report) = encoder.Encode(loaded, Spec(opts, times, fps), path, codec, fps, alphaMode);
 

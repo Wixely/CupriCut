@@ -214,6 +214,10 @@ public sealed partial class StudioController : IDisposable
                 RunExport();
                 break;
 
+            case "open-folder":
+                OpenLastExport();
+                break;
+
             case "toggle-checks":
                 _model.ShowAllChecks = !_model.ShowAllChecks;
                 ShowCalibration();
@@ -311,15 +315,18 @@ public sealed partial class StudioController : IDisposable
                 var fps = defaults?.Fps > 0 ? defaults.Fps : _cut.Options.DefaultFps;
                 var (times, plan) = ClipPlanner.Plan(0, defaults?.Duration ?? 3, fps);
 
+                // One folder per export, stamped, so a second take does not replace the first -
+                // the whole point of exporting from a window is that you do it repeatedly.
                 var stem = Path.GetFileNameWithoutExtension(project.Replace(CutProject.Extension, string.Empty));
-                var directory = Path.GetDirectoryName(_cut.ResolveWrite(Path.Combine(stem, ".keep")))!;
+                var directory = Path.GetDirectoryName(
+                    _cut.ResolveWrite(Path.Combine(OutputNaming.Run(stem), ".keep")))!;
                 Directory.CreateDirectory(directory);
 
                 // Picking "mask" in the dropdown is how transparency is asked for in the window -
                 // there is no separate alpha switch, and a second one would only be a way to get
                 // the two out of step. Plan works that out, and everything below uses ITS answer.
                 var export = ExportFormats.Plan(formats, asked: null, defaults?.Alpha ?? false,
-                    name => Path.Combine(directory, name));
+                    name => Path.Combine(directory, stem + "_" + name));
 
                 var sw = Stopwatch.StartNew();
                 var (videos, _) = _encoder.ExportFastest(
@@ -336,9 +343,10 @@ public sealed partial class StudioController : IDisposable
                 sw.Stop();
 
                 var total = videos.Sum(v => v.Bytes);
+                _model.LastExportFolder = directory;
                 _model.Status =
-                    $"Exported {string.Join(" + ", export.Targets.Select(t => t.Name))} - " +
-                    $"{videos[0].Frames} frames, {plan.ActualSeconds:0.###}s, {total:N0} bytes in {sw.Elapsed.TotalSeconds:0.0}s. {directory}";
+                    $"Exported {string.Join(" + ", export.Targets.Select(t => t.Name))} to {Path.GetFileName(directory)} - " +
+                    $"{videos[0].Frames} frames, {plan.ActualSeconds:0.###}s, {total:N0} bytes in {sw.Elapsed.TotalSeconds:0.0}s.";
             }
             catch (Exception ex)
             {
@@ -350,6 +358,22 @@ public sealed partial class StudioController : IDisposable
                 _model.Exporting = false;
             }
         });
+    }
+
+    /// <summary>Show the last export in the desktop's file manager. Rendering something and then
+    /// having to go and find it is a small friction that happens every single time.</summary>
+    private void OpenLastExport()
+    {
+        if (_model.LastExportFolder is not { Length: > 0 } folder) return;
+        try
+        {
+            Reveal.InFileManager(folder);
+        }
+        catch (Exception ex)
+        {
+            _model.Status = ex.Message;
+            _log.LogWarning(ex, "Could not open {Folder}", folder);
+        }
     }
 
     private void RunCalibration()

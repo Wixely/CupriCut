@@ -269,6 +269,69 @@ events are.
 | **Whether the analysis is a tool or a service** | `analyse_audio` as an MCP tool is obvious. It is less obvious whether the CLI needs it, or whether the window should show the envelope under the scrub bar — which is the thing that would make timing by hand pleasant, and is a chunk of work on its own. |
 | **Beat detection honesty** | Autocorrelation over an onset envelope is a real method and a mediocre one. It will be confidently wrong on rubato, on half/double tempo, and on anything without a drum. The confidence number is not decoration — an agent has to be able to tell "beats at 128 BPM" from "no usable beat here". |
 
+## Milestone 5 — frame packs, and CupriLex (5–8 days, and a decision)
+
+**The idea.** HyperFrames (HeyGen, Apache 2.0) is the same premise as this one — *"Write HTML.
+Render video. Built for agents."* — done through headless Chrome. It has something CupriCut does
+not: a catalogue of designed **frame packs**, each a palette, a typography system and a `frame.md`
+prompt that tells an agent how to compose in that look. Their own description of `frame.md` is the
+tell: *"the missing translation layer — it takes your web-context design spec and inverts it for the
+frame."*
+
+Taking a pack, appending what CupriFace does differently as an explicit override, and rendering it
+here would give CupriCut a designed starting point without designing one.
+
+**What actually transfers, measured rather than assumed.**
+
+| their half | here | |
+|---|---|---|
+| `:root` design tokens as CSS custom properties | **unchanged** | `var()` and `var(--x, fallback)` both work in the engine, for colours and for lengths. Verified before this was written down. This is the whole palette and typography layer and it costs nothing. |
+| `data-start` / `data-duration` / `data-track-index` on scenes | **nearly unchanged** | Milestone 2's timeline layer already plans `data-start` / `data-duration` / `data-track`. Arriving at the same vocabulary independently is a good sign about the vocabulary. |
+| Typography discipline — minimum sizes, weight contrast, banned families, tabular numerals | **as guidance** | Prose in a prompt, not code. Free. |
+| GSAP timelines (`tl.from()`, `tl.set()`, `autoAlpha`) | **does not transfer at all** | There is no JavaScript engine, by design. This is the hard half and the whole reason a translator is a project rather than a function. |
+| HyperShader transitions | **no equivalent** | Drop them, and say so rather than rendering something that silently lacks them. |
+| `autoAlpha` visibility juggling | **strip it** | It exists to work around their shader blanketing every scene to `opacity:0`. Carrying the workaround for a problem we do not have is worse than not carrying the feature. |
+
+30. **The prompt overlay — cheap, do it first.** Take the pack's spec and append a CupriFace section
+    that is explicitly labelled as OVERRIDING what came before it: no JavaScript and no GSAP, motion
+    is `@keyframes` plus `animation-delay`, binding is `{{Path}}` and `data-repeat` and nothing else,
+    no `pointer-events`, no `border-left/right/bottom`, no `letter-spacing`, no repeating gradients,
+    fonts must be registered rather than named. Most of that list already exists as this repository's
+    hard-won notes; it wants collecting into one document, not discovering again.
+
+    This is a markdown file and an hour, and it is most of the value. Do it before anything with a
+    parser in it.
+
+31. **CupriLex — the translator.** HTML and CSS in, CupriFace-safe HTML and CSS out, with a REPORT
+    of what it had to change and what it could not carry. The report matters more than the
+    conversion: silently dropping a shader transition is how someone ships a video missing its
+    transitions.
+
+    The tractable rewrites are mechanical — `border-left: 2px solid x` to a child div, a repeating
+    gradient to explicit stops, `letter-spacing` dropped with a note, `<img>` to `<cupri-image>`.
+    The hard one is a **GSAP timeline to `@keyframes`**, which is a small compiler: read the tween
+    calls, resolve their targets, turn each into a named keyframes block and an `animation-delay`
+    against the absolute clock. Tractable for the `tl.from`/`tl.to`/`tl.set` subset a frame pack
+    actually uses; not tractable in general, and it should refuse rather than guess.
+
+**Should it be its own repo?** Not yet, and probably eventually. Start it as `Services/Lex/` here,
+because the only way to find out which rewrites matter is to run real packs through it and look at
+the output — and that loop is much tighter inside the thing that renders. Extract it when two
+things are true: there is a corpus of real inputs worth regression-testing against, and something
+other than CupriCut wants it (CupriFace itself is the obvious candidate, since "make this browser
+HTML work in the engine" is the engine's problem too, not this tool's). A repo boundary drawn
+before either is true buys a release process and costs every experiment.
+
+**Licensing.** Apache 2.0, so the spec text and catalogue blocks can be used with attribution. Say
+in the output which pack a composition came from — not because the licence demands a notice in the
+rendered video, but because a project that cannot say where its design came from is a project
+nobody can re-license later.
+
+**The honest risk.** This makes CupriCut's compositions look like someone else's design system, and
+a translator is a maintenance surface that tracks a project we do not control. The mitigation is
+the direction of travel: import a pack ONCE into a `.cut.json`, which is already self-contained, and
+never depend on the translator at render time. A project that has been imported is just a project.
+
 ## Phase 2 — deferred, deliberately
 
 16. Video seek-to-time in the engine (a renderer needs *the frame at t*, not playback), and WOFF 2
@@ -276,6 +339,22 @@ events are.
     call). Audio mux was here; it has moved to Milestone 4, where the rest of the audio work is.
 
 ---
+
+## Engine behaviour to pin down
+
+Found while writing the sample compositions, and written down rather than worked around silently.
+None is confirmed as a bug: each is a case where the engine differs from a browser and where the
+first guess about the cause was wrong, so each wants an isolated reproduction before it is filed.
+The rule this repository already follows applies — measure it, then claim it.
+
+| what happened | what is not yet known |
+|---|---|
+| `overflow: hidden` did not clip a child carrying a `transform`, and clipped a plain oversized child to nothing | Whether the clip is computed before the transform, whether it is the nesting, or whether the descendant selector in the test never applied. An odometer (a 0–9 column sliding inside a window) is the obvious use and does not work. |
+| `position: absolute` children inside a nested positioned box landed outside their container | Isolated probes of `position:relative` + `align-items` behaved correctly, so the cause is something else in the real composition rather than the pattern itself. |
+| Setting `line-height` made text boxes much taller than the value given | Whether line-height adds to the content height rather than replacing it. The two samples that were here first set none, which is why they always rendered correctly. |
+| `align-items: center` centred correctly in isolation, but spread a flex item's children across the full height when a full-height `position:absolute` sibling shared the flex line | Whether an absolutely positioned child is still participating as a flex item. |
+| `align-self: center` and `margin: auto` do not centre a flex item | Probably simply unsupported; `align-items` on the parent does work and is the answer. |
+| `border-left` / `border-right` / `border-bottom` and `letter-spacing` are silently ignored | Reported by CupriDoctor as CF0050. Some separators in the studio window have therefore never been drawn. |
 
 ## Decided — do not re-open
 

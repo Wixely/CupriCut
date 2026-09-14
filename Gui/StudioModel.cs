@@ -154,6 +154,12 @@ public sealed class StudioModel
 
     public string ExportLabel => Exporting ? "Exporting\u2026" : "Export";
 
+    /// <summary>Where the last export landed. Empty until there has been one, which is what hides
+    /// the button - an "open folder" that opens nothing is worse than no button.</summary>
+    public string LastExportFolder { get; set; } = string.Empty;
+
+    public string OpenFolderClass => LastExportFolder.Length > 0 ? "" : "hidden";
+
     public string ExportClass => Exporting ? "armed" : "";
 
     /// <summary>The rectangle being dragged right now, in normalised frame coordinates.</summary>

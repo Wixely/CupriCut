@@ -135,6 +135,7 @@ public sealed class StudioApp(StudioModel model) : CupriApp
                   <cupri-option value="mp4+gif">mp4 + gif</cupri-option>
                 </cupri-select>
                 <cupri-button data-cut-action="export" class="{{ExportClass}}">{{ExportLabel}}</cupri-button>
+                <cupri-button data-cut-action="open-folder" class="{{OpenFolderClass}}">Open folder</cupri-button>
               </div>
 
               <div class="status">{{Status}}</div>

@@ -1,0 +1,116 @@
+<!--
+  A caption bar that is meant to sit OVER footage - the transparent-output workflow, start to
+  finish, in one small composition.
+
+  What this one is for: KEYING. Almost everything else here is a full frame with its own
+  background. This is the other kind of thing you render: a small overlay with nothing behind it,
+  destined for a timeline in someone else's editor.
+
+  Render it three ways from this one file:
+
+    cupricut export --composition caption-strip.html --formats mp4,mask
+        the colour half and its matte, which every editor can key
+
+    cupricut export --composition caption-strip.html --formats webm
+        a single clip with a real alpha channel, for the web
+
+    cupricut frame --composition caption-strip.html --t 1.2
+        over the checkerboard, for review
+
+  The checkerboard is marked --cupricut-background. It exists so a human can see the caption
+  against SOMETHING while judging it, and it is the first thing to go when the clip is exported:
+  export infers showBackground from the formats it was asked for, and a mask of a composition with
+  an opaque backdrop would be a white rectangle.
+
+  It is one gradient with hard stops rather than a repeating-linear-gradient(), because the engine
+  does not paint repeating gradients - CupriDoctor reports that as CF0051 rather than leaving it to
+  be found in a render.
+-->
+<div class="stage">
+  <div --cupricut-background="review backdrop" class="checks"></div>
+
+  <div class="caption">
+    <div class="pill">LIVE</div>
+    <div class="words">The renderer never opens a browser</div>
+  </div>
+</div>
+
+<style>
+  :root {
+    --ink: #10131a;
+    --paper: #f6f8fc;
+    --accent: #d9642a;
+    --check-a: #2b3444;
+    --check-b: #222a38;
+    --font: "Noto Sans";
+  }
+
+  .stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    align-items: flex-end;
+    font-family: var(--font);
+  }
+
+  .checks {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(45deg,
+      var(--check-a) 0%,  var(--check-a) 25%,
+      var(--check-b) 25%, var(--check-b) 50%,
+      var(--check-a) 50%, var(--check-a) 75%,
+      var(--check-b) 75%, var(--check-b) 100%);
+  }
+
+  .caption {
+    position: relative;
+    display: flex;
+    align-items: center;
+    margin: 0 0 88px 88px;
+    padding: 20px 30px;
+    border-radius: 10px;
+    background: var(--paper);
+    animation: slide 0.55s ease-out both;
+  }
+
+  .pill {
+    padding: 7px 14px;
+    border-radius: 6px;
+    background: var(--accent);
+    color: var(--paper);
+    font-size: 15px;
+    font-weight: 700;
+    margin-right: 20px;
+    animation: pulse 1.6s ease-in-out 0.6s infinite;
+  }
+
+  .words {
+    font-size: 31px;
+    font-weight: 700;
+    color: var(--ink);
+    animation: fade 0.5s ease-out 0.25s both;
+  }
+
+  @keyframes slide {
+    from { opacity: 0; transform: translateY(30px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+
+  /* Breathing rather than blinking: an overlay that holds on screen needs some life in it, and a
+     hard on/off reads as a fault. Infinite is fine here - it is still a pure function of t. */
+  @keyframes pulse {
+    0%   { opacity: 1; }
+    50%  { opacity: 0.55; }
+    100% { opacity: 1; }
+  }
+</style>

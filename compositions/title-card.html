@@ -1,0 +1,106 @@
+<!--
+  An opening title: the words arrive one after another, an accent rule sweeps under them, and the
+  whole lockup settles. Three seconds.
+
+  What this one is for: STAGGERING. The engine's clock is absolute and stamps no creation time, so
+  `animation-delay` is what gives each element its own zero. Every line here shares one @keyframes
+  and differs only by its delay, which is the cheapest way to make type feel composed rather than
+  dumped on screen - and it is the same mechanism the timeline layer will use to start a late
+  element.
+
+  Design tokens live in :root as CSS custom properties. The engine supports them fully, `var()`
+  fallbacks included, so a palette is one block to edit rather than a find-and-replace.
+
+  The backdrop is marked --cupricut-background: render with showBackground:false for a version that
+  drops over footage.
+-->
+<div class="stage">
+  <div --cupricut-background class="backdrop"></div>
+
+  <div class="lockup">
+    <div class="eyebrow">CUPRICUT</div>
+    <div class="line l1">Write HTML.</div>
+    <div class="line l2">Render video.</div>
+    <div class="rule"></div>
+    <div class="sub">No browser anywhere in the pipeline.</div>
+  </div>
+</div>
+
+<style>
+  :root {
+    --bg-top: #0b0e14;
+    --bg-bottom: #161d2b;
+    --ink: #f4f6fb;
+    --muted: #8d9ab3;
+    --accent: #d9642a;
+    --font: "Noto Sans";
+  }
+
+  .stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    font-family: var(--font);
+  }
+
+  .backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(155deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+  }
+
+  /* Placed by margin rather than by align-items. The two samples that were here first do it
+     this way, and they render; see PLAN.md for what align-items did instead. */
+  .lockup {
+    margin: 196px 0 0 120px;
+  }
+
+  .eyebrow {
+    font-size: 16px;
+    font-weight: 700;
+    color: var(--accent);
+    margin-bottom: 18px;
+    animation: rise 0.5s ease-out both;
+  }
+
+  /* One keyframes, four delays. That is the whole trick. */
+  .line {
+    font-size: 82px;
+    font-weight: 700;
+    color: var(--ink);
+    animation: rise 0.7s ease-out both;
+  }
+
+  .l1 { animation-delay: 0.12s; }
+  .l2 { animation-delay: 0.26s; }
+
+  .rule {
+    height: 6px;
+    width: 0;
+    margin-top: 26px;
+    border-radius: 3px;
+    background: var(--accent);
+    animation: sweep 0.8s ease-out 0.5s both;
+  }
+
+  .sub {
+    font-size: 22px;
+    color: var(--muted);
+    margin-top: 22px;
+    animation: rise 0.7s ease-out 0.72s both;
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(34px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes sweep {
+    from { width: 0; opacity: 0; }
+    to   { width: 420px; opacity: 1; }
+  }
+</style>

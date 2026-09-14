@@ -158,12 +158,27 @@ The CLI has the same verbs over the same services:
 
 ```bash
 cupricut probe
-cupricut frame  --composition lower-third.html --t 1.2
-cupricut sheet  --composition lower-third.html --duration 3 --count 9
+cupricut frame  --composition title-card.html --t 1.2
+cupricut sheet  --composition stat-counter.html --duration 3 --count 9
 cupricut video  --composition lower-third.html --duration 3 --codec h264
 cupricut video  --composition timebase.html --duration 10 --fps 120   # 1200 frames, 10.000s
 cupricut projects
 ```
+
+### The compositions that ship
+
+Six of them, in `compositions/`. Each is a working starting point and each exists to show one thing:
+
+| | what it is for |
+|---|---|
+| `lower-third.html` | The broadcast staple, and the **marked backdrop**: one file gives an opaque clip to review and a transparent one to key. |
+| `title-card.html` | **Staggering.** Four elements, one `@keyframes`, four `animation-delay`s. Design tokens as `:root` custom properties. |
+| `revenue-card.html` | **A chart that draws itself**, bar by bar, on nothing but delays. |
+| `stat-counter.html` | **Sequencing.** Nothing happens at once: the card lifts, the bar draws, the number lands *on* the bar finishing, the caption follows. Order is the design. |
+| `caption-strip.html` | **The keying workflow**, end to end — a small overlay with nothing behind it, and a review backdrop that the export drops automatically. |
+| `timebase.html` | The frame-accuracy proof: a clock that reads its own frame number, for checking 1200 frames really are 10.000 seconds. |
+
+Every one is pure in `t`, so every one renders directly rather than being swept.
 
 Docker is the one departure from house style — **the image carries ffmpeg**, because a container
 whose job is turning HTML into MP4 and which then cannot encode one is broken. The release zips do

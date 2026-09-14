@@ -60,6 +60,10 @@ public sealed record SweepReport(
     /// <summary>Whether the composition needed sweeping at all.</summary>
     public PurityVerdict Purity { get; init; } = PurityVerdict.Pure;
 
+    /// <summary>How many threads rendered it. One unless the frames were independent and there were
+    /// enough of them to be worth sharding.</summary>
+    public int Workers { get; init; } = 1;
+
     /// <summary>Frames rendered purely to carry state to the ones that were asked for. Zero when the
     /// composition is pure in <c>t</c>.</summary>
     public int FramesDiscarded => Math.Max(0, StepsRendered - FramesKept);

@@ -189,25 +189,31 @@ public static class RenderTools
         var directory = cut.ResolveWrite(Path.Combine(stem, ".keep"));
         directory = Path.GetDirectoryName(directory)!;
 
+        var spec = new SweepSpec
+        {
+            Composition = composition,
+            Width = width,
+            Height = height,
+            Scale = scale,
+            Times = times,
+            SweepFps = rate,
+            Background = ToolSupport.ParseColor(background),
+            Alpha = alpha,
+        };
+
         // Streamed, not collected: a long sequence must not hold every frame in memory. The writer
         // also applies back-pressure, so the sweep runs at the rate the encoders can keep up with.
+        //
+        // Deliberately NOT sharded across cores, though it looks like the obvious candidate.
+        // Measured: sharding render+encode over six workers took 3.55s against 2.75s for this
+        // path, because this one already runs the PNG encodes on the whole thread pool while the
+        // sweep renders - which is the better balance. Parallelism helps where the encoder is not
+        // already saturating the machine; here it is.
         using var writer = new FrameSequenceWriter();
-        var report = cut.Sweep(
-            loaded,
-            new SweepSpec
-            {
-                Composition = composition,
-                Width = width,
-                Height = height,
-                Scale = scale,
-                Times = times,
-                SweepFps = rate,
-                Background = ToolSupport.ParseColor(background),
-                Alpha = alpha,
-            },
+        var report = cut.Sweep(loaded, spec,
             frame => writer.Add(frame.Image, Path.Combine(directory, ToolSupport.FrameName(stem, frame.Index, frame.Time))));
-
         var written = writer.Complete();
+
         return JsonSerializer.Serialize(new
         {
             composition = report.Composition,
@@ -252,6 +258,7 @@ public static class RenderTools
         [Description("Transparent background.")] bool? alpha = null,
         [Description("How transparency is carried: 'embedded' (a real alpha channel - needs vp9 or prores), 'matteBelow' (colour on top, alpha greyscale below, doubles the height) or 'matteRight' (side by side). A matte works with ANY codec including h264, which has no alpha channel of its own.")] string? alphaMode = null,
         [Description("Background colour when alpha is false, e.g. '#101014'. Default white.")] string? background = null,
+        [Description("Render threads. 0 uses every core, which is the default; 1 forces the sequential path. Only a composition pure in t can be sharded - an impure one is swept in order whatever this says.")] int workers = 0,
         [Description("File name under the output root. The codec's own extension is used if none is given.")] string? output = null)
     {
         cut.EnsureVideoAllowed();
@@ -277,7 +284,7 @@ public static class RenderTools
         var stem = ToolSupport.SafeStem(output ?? composition, "render");
         var path = cut.ResolveWrite(stem + picked.Extension);
 
-        var (video, report) = encoder.Encode(
+        var (video, report) = encoder.EncodeFastest(
             loaded,
             new SweepSpec
             {
@@ -290,7 +297,7 @@ public static class RenderTools
                 Background = ToolSupport.ParseColor(background),
                 Alpha = alpha,
             },
-            path, picked, rate, mode);
+            path, picked, rate, mode, workers, cut.RenderLog);
 
         return JsonSerializer.Serialize(new
         {

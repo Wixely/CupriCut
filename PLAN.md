@@ -88,6 +88,43 @@ the pixels** rather than describe them.
 **Done when** a reviewer can scrub to a frame, draw a box round the thing that is wrong, type
 "logo enters too late", and a separate agent run can read that back with the time and the region.
 
+## Milestone 1d — the studio as a tool, not a viewer (6–8 days)
+
+Everything here came from using the window in anger. They divide into things the renderer must be
+able to DO, and things the window must let a person DO — and the first group is what the second is
+built on, so it goes first.
+
+**Backend**
+
+16. **Parallel video.** A 10-minute clip at 120 fps is 72,000 frames and no amount of clever `t`
+    handling changes that — but a composition that is pure in `t` has independent frames, so they
+    shard across cores. Render to a temp directory and mux, or feed an ordered queue straight into
+    ffmpeg; the first is simpler and the disk is cheap. ~12x on this machine.
+17. **Calibrate.** Actually encode a two-frame clip per capability and report what came back, as a
+    table of ticks and crosses, errors-only by default. This exists because `libvpx-vp9` on
+    ffmpeg N-91454 accepts `-pix_fmt yuva420p`, reports success, and writes `yuv420p`: what a codec
+    *claims* and what a build *does* are different questions, and only the second one matters.
+18. **Special elements.** `--cupricut-background` marks an element as the backdrop, so it can be
+    shown or hidden per render: the same composition gives an opaque video for review and a
+    transparent one for the edit. Recognised, reported by `inspect`, and toggled per render.
+19. **Mask output.** A black-and-white alpha video beside (or instead of) the colour, for the many
+    editors that will not take a transparent one.
+20. **Export formats.** One verb, a list of targets — mp4, webm, mov, gif, PNG sequence, mask,
+    matte — rather than a codec argument people have to already understand.
+21. **Resolution and scaling in the project.** Width, height and the `PresentInfo` mode
+    (responsive / fixed / hybrid / adaptive) stored as project data, so "render this at 4K the way
+    it looks at 1080p" is a setting rather than a re-authoring.
+
+**The window**
+
+22. **A settings page, tabbed.** Calibrate is one tab; the MCP server — its URL, copyable — is
+    another.
+23. **Annotations that can be worked with.** The region drawn must be VISIBLE: a live marquee while
+    dragging, and every annotation drawn on the frame it belongs to. Editable text after the fact.
+    The recorded time and frame kept, and the marker shown for a second after its timestamp so it
+    can be found by scrubbing rather than by memory.
+24. **Project folders**, with drag and drop in and out.
+
 ## Milestone 2 — the timeline (3–4 days)
 
 12. **Timeline layer.** `data-start` / `data-duration` / `data-track` decide what is in the document

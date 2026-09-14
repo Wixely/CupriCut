@@ -98,6 +98,8 @@ internal static class ToolSupport
         elapsedMs = Math.Round(report.ElapsedMs, 1),
         msPerFrame = Math.Round(report.ElapsedMs / Math.Max(1, report.StepsRendered), 2),
         size = $"{report.Width * report.Scale}x{report.Height * report.Scale}",
+        workers = report.Workers,
+        pureInTime = report.Purity.PureInTime,
         settled = report.Settled,
         fontProblems = report.FontProblems.Count == 0 ? null : report.FontProblems,
     };

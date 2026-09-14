@@ -59,6 +59,105 @@ public sealed record VideoResult(string Path, long Bytes, int Frames, double Fps
 /// </summary>
 public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
 {
+    /// <summary>
+    /// Encode from a directory of numbered PNGs rather than from a pipe.
+    ///
+    /// <para>The second half of a parallel render: the frames already exist, in order, so ffmpeg
+    /// reads them as an image sequence. Everything about the codec is the same as the piped path -
+    /// only the input differs.</para>
+    /// </summary>
+    public VideoResult EncodeFromFrames(string pattern, int frames, double outputFps, VideoCodec codec,
+        string outputPath, bool alpha, AlphaMode alphaMode)
+    {
+        cut.EnsureVideoAllowed();
+
+        var args = new List<string>
+        {
+            "-hide_banner", "-loglevel", "error", "-y",
+            "-framerate", Rate(outputFps),
+            "-i", pattern,
+            "-an",
+        };
+
+        var matte = alpha && alphaMode != AlphaMode.Embedded;
+        if (matte)
+        {
+            args.Add("-filter_complex");
+            args.Add(MatteFilter(alphaMode));
+            args.Add("-map");
+            args.Add("[v]");
+        }
+
+        args.Add("-c:v");
+        args.Add(codec.Encoder);
+        var pixelFormat = matte ? "yuv420p" : codec.PixelFormat;
+        if (pixelFormat is { Length: > 0 })
+        {
+            args.Add("-pix_fmt");
+            args.Add(pixelFormat);
+        }
+        if (!matte || codec.Name != "gif") args.AddRange(codec.ExtraArgs);
+        args.Add(outputPath);
+
+        var line = string.Join(' ', args.Select(Quote));
+        log.LogInformation("ffmpeg {Args}", line);
+        RunToCompletion(line);
+
+        var info = new FileInfo(outputPath);
+        if (!info.Exists) throw new InvalidOperationException($"ffmpeg reported success but wrote no file at '{outputPath}'.");
+
+        var actualFormat = PixelFormatOf(outputPath);
+        if (alpha && alphaMode == AlphaMode.Embedded) VerifyEmbeddedAlpha(codec, actualFormat, outputPath);
+
+        return new VideoResult(outputPath, info.Length, frames, outputFps, frames / outputFps, codec.Name, alpha)
+        {
+            AlphaMode = alphaMode,
+            PixelFormat = actualFormat,
+            Note = MatteNote(alpha, alphaMode),
+        };
+    }
+
+    /// <summary>Run ffmpeg to completion with no stdin, failing loudly on a non-zero exit.</summary>
+    private void RunToCompletion(string args)
+    {
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo(cut.Options.FfmpegPath, args)
+            {
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            },
+        };
+
+        var stderr = new StringBuilder();
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
+
+        try { process.Start(); }
+        catch (Exception ex)
+        {
+            throw new CutPolicyException($"Could not start ffmpeg at '{cut.Options.FfmpegPath}': {ex.Message}.");
+        }
+
+        process.BeginErrorReadLine();
+        process.BeginOutputReadLine();
+
+        if (!process.WaitForExit(TimeSpan.FromSeconds(cut.Options.FfmpegTimeoutSeconds)))
+        {
+            KillQuietly(process);
+            throw new TimeoutException($"ffmpeg did not finish within Cut:FfmpegTimeoutSeconds. {Tail(stderr)}");
+        }
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException($"ffmpeg exited {process.ExitCode}. {Tail(stderr)}");
+    }
+
+    private static string? MatteNote(bool alpha, AlphaMode mode) =>
+        alpha && mode != AlphaMode.Embedded
+            ? $"Alpha is carried as a matte: the frame is {(mode == AlphaMode.MatteRight ? "twice as wide, colour left and alpha right" : "twice as tall, colour on top and alpha below")}. " +
+              "Composite with colour x alpha; the colour half is straight (unpremultiplied) alpha."
+            : null;
+
     /// <summary>Codecs offered by name, and what they mean to ffmpeg. Keyed the way an agent would
     /// ask.</summary>
     public static readonly IReadOnlyDictionary<string, VideoCodec> Codecs = new Dictionary<string, VideoCodec>(StringComparer.OrdinalIgnoreCase)
@@ -125,6 +224,135 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         }
     }
 
+    /// <summary>
+    /// Render and encode, choosing the fastest honest route.
+    ///
+    /// <para>A composition pure in <c>t</c> has independent frames, so a long clip is sharded across
+    /// cores into a scratch directory and muxed from there. An impure one must be swept in order and
+    /// goes down the pipe as before. Short clips go down the pipe either way: below about fifty
+    /// frames the setup costs more than the sharding saves.</para>
+    /// </summary>
+    public (VideoResult Video, SweepReport Sweep) EncodeFastest(
+        Composition composition, SweepSpec spec, string outputPath, VideoCodec codec,
+        double outputFps, AlphaMode alphaMode, int workers, ILogger renderLog)
+    {
+        cut.EnsureVideoAllowed();
+
+        var purity = Purity.Analyse(composition);
+        var wanted = workers <= 0 ? ParallelRenderer.DefaultWorkers : Math.Clamp(workers, 1, Environment.ProcessorCount);
+
+        if (!purity.PureInTime || spec.Times.Count < ParallelRenderer.WorthSharding || wanted == 1)
+            return Encode(composition, spec, outputPath, codec, outputFps, alphaMode);
+
+        // Same pipe as the sequential path - only the number of threads feeding it differs.
+        var renderer = new ParallelRenderer(cut, renderLog);
+        ShardReport? shard = null;
+        var video = PipeInto(composition, spec, outputPath, codec, outputFps, alphaMode,
+            (stdin, frameBytes) =>
+            {
+                shard = renderer.RenderInOrder(composition, spec, spec.Times, wanted, (_, span) =>
+                {
+                    if (span.Length != frameBytes)
+                        throw new InvalidOperationException($"A frame is {span.Length} bytes, expected {frameBytes}.");
+                    stdin.Write(span);
+                });
+                return shard.Frames;
+            });
+
+        var report = new SweepReport(
+            composition.Path,
+            spec.Width > 0 ? spec.Width : composition.Defaults?.Width ?? cut.Options.DefaultWidth,
+            spec.Height > 0 ? spec.Height : composition.Defaults?.Height ?? cut.Options.DefaultHeight,
+            spec.Scale > 0 ? spec.Scale : composition.Defaults?.Scale ?? 1,
+            shard!.Frames, shard.Frames, outputFps, spec.Times[^1], shard.ElapsedMs, true, [])
+        { Purity = purity, Workers = shard.Workers };
+
+        return (video, report);
+    }
+
+    /// <summary>
+    /// Start ffmpeg, let <paramref name="fill"/> write raw frames into its stdin, and finish.
+    ///
+    /// <para>The only difference between the sequential and parallel paths is who fills the pipe -
+    /// one sweep on this thread, or a pool of workers whose output is reordered before it gets
+    /// here. Everything else about the process, the failure handling and the alpha verification is
+    /// shared, so the two cannot drift.</para>
+    /// </summary>
+    private VideoResult PipeInto(Composition composition, SweepSpec spec, string outputPath, VideoCodec codec,
+        double outputFps, AlphaMode alphaMode, Func<Stream, int, int> fill)
+    {
+        var defaults = composition.Defaults;
+        var scale = spec.Scale > 0 ? spec.Scale : defaults?.Scale > 0 ? defaults.Scale : 1;
+        var alpha = spec.Alpha ?? defaults?.Alpha ?? false;
+        var width = (spec.Width > 0 ? spec.Width : defaults?.Width > 0 ? defaults.Width : cut.Options.DefaultWidth) * scale;
+        var height = (spec.Height > 0 ? spec.Height : defaults?.Height > 0 ? defaults.Height : cut.Options.DefaultHeight) * scale;
+        var frameBytes = width * height * 4;
+
+        var sweepFps = spec.SweepFps > 0 ? spec.SweepFps : defaults?.Fps > 0 ? defaults.Fps : cut.Options.DefaultFps;
+        var args = BuildArguments(width, height, sweepFps, outputFps, codec, outputPath, alpha, alphaMode);
+        log.LogInformation("ffmpeg {Args}", args);
+
+        using var process = new Process
+        {
+            StartInfo = new ProcessStartInfo(cut.Options.FfmpegPath, args)
+            {
+                RedirectStandardInput = true,
+                RedirectStandardError = true,
+                RedirectStandardOutput = true,
+                UseShellExecute = false,
+                CreateNoWindow = true,
+            },
+        };
+
+        var stderr = new StringBuilder();
+        process.ErrorDataReceived += (_, e) => { if (e.Data is not null) stderr.AppendLine(e.Data); };
+
+        try { process.Start(); }
+        catch (Exception ex)
+        {
+            throw new CutPolicyException(
+                $"Could not start ffmpeg at '{cut.Options.FfmpegPath}': {ex.Message}. " +
+                "Set Cut:FfmpegPath, or call probe to see what this machine has.");
+        }
+
+        process.BeginErrorReadLine();
+        process.BeginOutputReadLine();
+
+        int written;
+        try
+        {
+            written = fill(process.StandardInput.BaseStream, frameBytes);
+            process.StandardInput.BaseStream.Flush();
+        }
+        catch (IOException ex)
+        {
+            KillQuietly(process);
+            throw new InvalidOperationException($"ffmpeg stopped reading. {Tail(stderr)}", ex);
+        }
+
+        process.StandardInput.Close();
+        if (!process.WaitForExit(TimeSpan.FromSeconds(cut.Options.FfmpegTimeoutSeconds)))
+        {
+            KillQuietly(process);
+            throw new TimeoutException($"ffmpeg did not finish within Cut:FfmpegTimeoutSeconds. {Tail(stderr)}");
+        }
+        if (process.ExitCode != 0)
+            throw new InvalidOperationException($"ffmpeg exited {process.ExitCode}. {Tail(stderr)}");
+
+        var info = new FileInfo(outputPath);
+        if (!info.Exists) throw new InvalidOperationException($"ffmpeg reported success but wrote no file at '{outputPath}'. {Tail(stderr)}");
+
+        var actualFormat = PixelFormatOf(outputPath);
+        if (alpha && alphaMode == AlphaMode.Embedded) VerifyEmbeddedAlpha(codec, actualFormat, outputPath);
+
+        return new VideoResult(outputPath, info.Length, written, outputFps, written / outputFps, codec.Name, alpha)
+        {
+            AlphaMode = alphaMode,
+            PixelFormat = actualFormat,
+            Note = MatteNote(alpha, alphaMode),
+        };
+    }
+
     /// <summary>Sweep the composition and pipe every kept frame into ffmpeg.</summary>
     public (VideoResult Video, SweepReport Sweep) Encode(SweepSpec spec, string outputPath, VideoCodec codec, double outputFps) =>
         Encode(cut.LoadComposition(spec.Composition), spec, outputPath, codec, outputFps, AlphaMode.Embedded);
@@ -188,7 +416,7 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         process.BeginOutputReadLine();
 
         var frames = 0;
-        SweepReport report;
+        SweepReport report = null!;
         try
         {
             var stdin = process.StandardInput.BaseStream;
@@ -228,10 +456,7 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         var actualFormat = PixelFormatOf(outputPath);
         if (alpha && alphaMode == AlphaMode.Embedded) VerifyEmbeddedAlpha(codec, actualFormat, outputPath);
 
-        var note = alpha && alphaMode != AlphaMode.Embedded
-            ? $"Alpha is carried as a matte: the frame is {(alphaMode == AlphaMode.MatteRight ? "twice as wide, colour left and alpha right" : "twice as tall, colour on top and alpha below")}. " +
-              "Composite with colour x alpha; the colour half is straight (unpremultiplied) alpha."
-            : null;
+        var note = MatteNote(alpha, alphaMode);
 
         var result = new VideoResult(outputPath, info.Length, frames, outputFps, frames / outputFps, codec.Name, alpha)
         {

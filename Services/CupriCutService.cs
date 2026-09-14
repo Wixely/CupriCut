@@ -44,6 +44,10 @@ public sealed class CupriCutService
 
     public CutOptions Options => _options.CurrentValue;
 
+    /// <summary>The logger a helper spun up per render should use, so its output lands with the
+    /// service's rather than nowhere.</summary>
+    public ILogger RenderLog => _log;
+
     public string ContentRoot { get; init; }
 
     // ---- Roots and limits ------------------------------------------------------------------

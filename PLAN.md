@@ -123,7 +123,8 @@ the pixels** rather than describe them.
 | | |
 |---|---|
 | **Name** | CupriCut. The film word: a cut, the final cut. Says video without saying animation tool. |
-| **`render_frame(t)` means** | **sweep from 0** and return the last frame. A frame is a function of `t` *and* the frames before it; sweeping is correct by construction and 5.6 ms per swept frame. |
+| **`render_frame(t)` means** | The frame a sweep from 0 would produce — but reached directly when the composition is **pure in `t`**, which is measured byte-identical and 10–45× faster. Sweeping is the fallback, not the rule. Conservative: anything unrecognised is treated as impure. |
+| **The preview holds its document open** | Opening and settling a composition costs 25–370 ms against 3–7 ms for a frame, so a scrub bar that reopens per position is a slideshow. One render thread owns the document for its life; superseded scrub positions are never rendered. |
 | **Fresh document per frame** | No. 15.7× the cost for frames *less* like the finished video, because every transition restarts. |
 | **Composition attributes** | hyperframes' `data-start` / `data-duration` / `data-track`, for agent familiarity. |
 | **Engine changes** | None. CupriCut consumes the `CupriFace` package the way Khalkos3D does; timelines and encoders stay out of the engine. |

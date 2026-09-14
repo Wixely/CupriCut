@@ -131,6 +131,7 @@ public sealed class StudioTests
         // Open the project and arm marking, the way the two clicks do.
         doc.OnAction("data-cut-open", _ => true);   // no-op: the controller's handler is already registered
         Activate(doc, app, "data-cut-open", "hero.cut.json");
+        SettlePreview(model);
         Activate(doc, app, "data-cut-action", "mark");
         Assert.True(model.Marking,
             $"marking did not arm. selected={model.Selected ?? "(null)"} projects={model.Projects.Count} status={model.Status}");
@@ -189,6 +190,9 @@ public sealed class StudioTests
         using var doc = Open(app);
         controller.Attach(doc);
         Activate(doc, app, "data-cut-open", "hero.cut.json");
+        // Opening starts a preview on a worker, and it reports into the same status strip. Let it
+        // land before asserting on that strip, or the assertion races the render.
+        SettlePreview(model);
         Activate(doc, app, "data-cut-action", "mark");
         using (doc.RenderToImage(app.Width, app.Height)) { }
 
@@ -201,6 +205,18 @@ public sealed class StudioTests
 
         Assert.Empty(harness.Cut.LoadProject("hero").Annotations);
         Assert.Contains("tap", model.Status, StringComparison.OrdinalIgnoreCase);
+    }
+
+    /// <summary>Wait for the background preview to finish. It writes the status strip when it
+    /// lands, so anything asserting on that strip has to let it happen first.</summary>
+    private static void SettlePreview(StudioModel model)
+    {
+        // Wait for the first frame, not merely for the Rendering flag: the frame arriving is what
+        // settles the window, and asserting before it races the render thread.
+        var deadline = DateTime.UtcNow.AddSeconds(10);
+        while (!model.HasFrame && DateTime.UtcNow < deadline) Thread.Sleep(5);
+        while (model.Rendering && DateTime.UtcNow < deadline) Thread.Sleep(5);
+        Thread.Sleep(60);
     }
 
     /// <summary>Fire the controller's handler for a data- attribute, the way a click on the element
@@ -242,6 +258,65 @@ public sealed class StudioTests
         foreach (var child in node.Children)
             if (LocateSurface(child, cx, cy, key) is { } hit) return hit;
         return null;
+    }
+
+    [Fact]
+    public void Play_advances_the_clock_in_real_time_and_stops_at_the_end()
+    {
+        using var harness = new Harness();
+        harness.Cut.SaveProject("hero", new CutProject
+        {
+            Html = Harness.Keyframed,
+            Render = new RenderSettings { Width = 320, Height = 180, Fps = 30, Duration = 0.6 },
+        });
+
+        var model = new StudioModel();
+        using var controller = new StudioController(harness.Cut, model, NullLogger<StudioController>.Instance);
+        var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
+        using var doc = Open(app);
+        controller.Attach(doc);
+
+        Activate(doc, app, "data-cut-open", "hero.cut.json");
+        SettlePreview(model);
+
+        Activate(doc, app, "data-cut-action", "play");
+        Assert.True(model.Playing);
+
+        // A short project, so this also proves it stops rather than running past the end or wrapping.
+        var deadline = DateTime.UtcNow.AddSeconds(5);
+        while (model.Playing && DateTime.UtcNow < deadline) Thread.Sleep(10);
+
+        Assert.False(model.Playing);
+        Assert.Equal(0.6, model.Time, 3);
+        Assert.Contains("end", model.Status, StringComparison.OrdinalIgnoreCase);
+    }
+
+    [Fact]
+    public void Marking_a_region_stops_playback_first()
+    {
+        // You cannot point at a frame that is moving.
+        using var harness = new Harness();
+        harness.Cut.SaveProject("hero", new CutProject
+        {
+            Html = Harness.Keyframed,
+            Render = new RenderSettings { Width = 320, Height = 180, Duration = 30 },
+        });
+
+        var model = new StudioModel();
+        using var controller = new StudioController(harness.Cut, model, NullLogger<StudioController>.Instance);
+        var app = new StudioApp(model) { FontSources = [.. FontFiles()] };
+        using var doc = Open(app);
+        controller.Attach(doc);
+
+        Activate(doc, app, "data-cut-open", "hero.cut.json");
+        SettlePreview(model);
+        Activate(doc, app, "data-cut-action", "play");
+        Assert.True(model.Playing);
+
+        Activate(doc, app, "data-cut-action", "mark");
+
+        Assert.False(model.Playing);
+        Assert.True(model.Marking);
     }
 
     // ---- annotations -------------------------------------------------------------------------

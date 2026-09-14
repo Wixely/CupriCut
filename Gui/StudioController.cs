@@ -16,7 +16,7 @@ namespace CupriCut.Gui;
 /// here is testable without a window — the preview path ends at an <see cref="SKImage"/>, and the
 /// drag maths is a pure function of a rectangle.</para>
 /// </summary>
-public sealed class StudioController : IDisposable
+public sealed partial class StudioController : IDisposable
 {
     private readonly CupriCutService _cut;
     private readonly ILogger _log;
@@ -24,9 +24,15 @@ public sealed class StudioController : IDisposable
     private readonly PreviewSurface _surface = new();
 
     private CupriDocument? _document;
-    private CancellationTokenSource? _pending;
     private double _shownTime = double.NaN;
     private string? _shownProject;
+
+    // The render thread and the handshake with it. See PreviewLoop.cs.
+    private readonly ManualResetEventSlim _wake = new(false);
+    private readonly CancellationTokenSource _stopping = new();
+    private readonly FrameClock _frameClock = new();
+    private Thread? _renderThread;
+    private DateTime _lastTick = DateTime.UtcNow;
 
     public StudioController(CupriCutService cut, StudioModel model, ILogger log)
     {
@@ -57,6 +63,7 @@ public sealed class StudioController : IDisposable
         document.OnPointer(StudioApp.MarkAttribute, OnMark);
 
         Refresh();
+        StartRenderThread();
     }
 
     /// <summary>Reload the project list from disk. Cheap, and the only thing that notices a project
@@ -108,7 +115,7 @@ public sealed class StudioController : IDisposable
             _model.Status = $"Opened {file}.";
             ReloadAnnotations(project);
             Refresh();
-            RequestPreview(force: true);
+            _wake.Set();
         }
         catch (Exception ex)
         {
@@ -122,6 +129,7 @@ public sealed class StudioController : IDisposable
         {
             case "mark":
                 if (_model.Selected is null) { _model.Status = "Open a project first."; return; }
+                _model.Playing = false;          // you cannot point at a frame that is moving
                 _model.Marking = !_model.Marking;
                 _model.Status = _model.Marking
                     ? "Drag a box on the frame round the thing that is wrong."
@@ -132,6 +140,21 @@ public sealed class StudioController : IDisposable
                 _model.Marking = false;
                 _model.Dragging = false;
                 _model.Status = "Marking cancelled.";
+                break;
+
+            case "play":
+                if (_model.Selected is null) { _model.Status = "Open a project first."; return; }
+                if (_model.Time >= _model.Duration - 1e-9) _model.Time = 0;
+                _model.Playing = !_model.Playing;
+                _lastTick = DateTime.UtcNow;
+                _model.Status = _model.Playing ? "Playing." : "Paused.";
+                _wake.Set();
+                break;
+
+            case "rewind":
+                _model.Playing = false;
+                _model.Time = 0;
+                _wake.Set();
                 break;
         }
     }
@@ -146,7 +169,8 @@ public sealed class StudioController : IDisposable
             if (annotation is null) return;
             _model.Time = annotation.Time;
             _model.Status = $"Jumped to {annotation.Time.ToString("0.###", CultureInfo.InvariantCulture)}s — \"{annotation.Note}\".";
-            RequestPreview(force: true);
+            _model.Playing = false;
+            _wake.Set();
         }
         catch (Exception ex)
         {
@@ -310,93 +334,14 @@ public sealed class StudioController : IDisposable
             })];
     }
 
-    // ---- preview --------------------------------------------------------------------------
-
-    /// <summary>Call each frame from the window loop. Notices the scrub bar moving and starts a
-    /// render; the model is bound two-way, so there is no change event to hook.</summary>
-    public void Tick()
-    {
-        if (_model.Selected is null) return;
-        if (Math.Abs(_model.Time - _shownTime) < 1e-6 && _model.Selected == _shownProject) return;
-        RequestPreview(force: false);
-    }
-
-    /// <summary>Render the current project at the current time, off the UI thread.</summary>
-    private void RequestPreview(bool force)
-    {
-        if (_model.Selected is not { } project) return;
-
-        var time = _model.Time;
-        if (!force && Math.Abs(time - _shownTime) < 1e-6 && project == _shownProject) return;
-
-        _shownTime = time;
-        _shownProject = project;
-
-        // One preview at a time. A scrub drags through dozens of values a second and every one of
-        // them would otherwise queue a sweep from zero; cancelling the previous is what keeps the
-        // window responsive rather than minutes behind the cursor.
-        _pending?.Cancel();
-        var cts = new CancellationTokenSource();
-        _pending = cts;
-
-        _model.Rendering = true;
-        _ = Task.Run(() => RenderPreview(project, time, cts.Token), cts.Token);
-    }
-
-    private void RenderPreview(string project, double time, CancellationToken token)
-    {
-        try
-        {
-            SKImage? captured = null;
-            var report = _cut.Sweep(
-                new SweepSpec { Composition = project, Times = [time] },
-                frame =>
-                {
-                    // The sweep owns its image only until the sink returns, so take a copy that can
-                    // outlive it and live on the window's surface.
-                    using var bitmap = FrameEncoder.Copy(frame.Image);
-                    captured = SKImage.FromBitmap(bitmap);
-                });
-
-            if (token.IsCancellationRequested)
-            {
-                captured?.Dispose();
-                return;
-            }
-
-            if (captured is not null)
-            {
-                _surface.Publish(captured);
-                _model.HasFrame = true;
-
-                // Re-registering is how a new frame is announced: the registry flags an arrival and
-                // the host repaints. (The app's refresh interval is the belt to this brace.)
-                _document?.Surfaces.Register(StudioApp.PreviewKey, _surface);
-            }
-
-            _model.Status =
-                $"t = {time.ToString("0.###", CultureInfo.InvariantCulture)}s · swept {report.StepsRendered} frames in {report.ElapsedMs:0}ms";
-        }
-        catch (OperationCanceledException)
-        {
-            // Superseded by a newer scrub position; nothing to say.
-        }
-        catch (Exception ex)
-        {
-            _model.Status = "Preview failed: " + ex.Message;
-            _log.LogWarning(ex, "Preview of {Project} at {Time}s failed", project, time);
-        }
-        finally
-        {
-            if (ReferenceEquals(_pending, null) || _pending!.Token == token || !token.CanBeCanceled)
-                _model.Rendering = false;
-        }
-    }
 
     public void Dispose()
     {
-        _pending?.Cancel();
-        _pending?.Dispose();
+        _stopping.Cancel();
+        _wake.Set();
+        _renderThread?.Join(TimeSpan.FromSeconds(2));
+        _wake.Dispose();
+        _stopping.Dispose();
         _surface.Dispose();
     }
 }

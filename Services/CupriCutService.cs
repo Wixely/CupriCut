@@ -266,14 +266,14 @@ public sealed class CupriCutService
     /// for are snapshotted out of the surface the whole sweep reuses.</para>
     /// </summary>
     public SweepReport Sweep(SweepSpec spec, Action<SweptFrame> sink) =>
-        Sweep(LoadComposition(spec.Composition), spec, sink);
+        Sweep(null, spec, sink);
 
     /// <summary>The same sweep over a composition already in hand - which is how a tool reads a
     /// project's render defaults before deciding what to ask for, without loading it twice.</summary>
-    public SweepReport Sweep(Composition composition, SweepSpec spec, Action<SweptFrame> sink)
+    public SweepReport Sweep(Composition? compositionOrNull, SweepSpec spec, Action<SweptFrame> sink)
     {
         var options = Options;
-        var defaults = composition.Defaults;
+        var defaults = (compositionOrNull ?? LoadedComposition(null, spec)).Defaults;
 
         // Precedence, everywhere: what the caller asked for, then what the project remembers, then
         // the server's configured default. A project is a source of defaults, never an override.
@@ -292,7 +292,19 @@ public sealed class CupriCutService
             throw new CutPolicyException(
                 $"{width * scale}x{height * scale} is {pixels:N0} pixels per frame, over Cut:MaxPixels ({options.MaxPixels:N0}).");
 
-        var steps = SweepSteps(spec.Times, fps);
+        // The founding measurement was that a frame depends on the frames before it - but only for a
+        // composition that carries state between Animate calls. @keyframes does not, and measured on
+        // this repository's worked compositions a direct render is byte-identical to a swept one and
+        // 10-45x faster. So sweep when it is needed and not otherwise.
+        var composition = LoadedComposition(compositionOrNull, spec);
+        var purity = spec.ForceSweep
+            ? new PurityVerdict(false, ["the caller asked for a full sweep"])
+            : Purity.Analyse(composition);
+
+        var steps = purity.PureInTime
+            ? [.. spec.Times.Select(Snap).Distinct().Order()]
+            : SweepSteps(spec.Times, fps);
+
         // Zero means no ceiling, which is the default: long clips are a supported thing to want.
         if (options.MaxFrames > 0 && steps.Length > options.MaxFrames)
             throw new CutPolicyException(
@@ -344,10 +356,12 @@ public sealed class CupriCutService
             var report = new SweepReport(
                 composition.Path, width, height, scale, steps.Length, kept, fps,
                 steps[^1], sw.Elapsed.TotalMilliseconds, settled,
-                [.. doc.FontReport.Problems.Select(p => $"{p.Family}: {p.Reason}")]);
+                [.. doc.FontReport.Problems.Select(p => $"{p.Family}: {p.Reason}")])
+            { Purity = purity };
 
             _log.LogInformation(
-                "Swept {Steps} frames of {Composition} at {Width}x{Height}x{Scale} in {Ms:0}ms, kept {Kept}",
+                "{Mode} {Steps} frames of {Composition} at {Width}x{Height}x{Scale} in {Ms:0}ms, kept {Kept}",
+                purity.PureInTime ? "Rendered" : "Swept",
                 report.StepsRendered, Path.GetFileName(report.Composition), width, height, scale, report.ElapsedMs, kept);
             return report;
         }
@@ -356,6 +370,10 @@ public sealed class CupriCutService
             _renderGate.Release();
         }
     }
+
+    /// <summary>The composition a spec names, unless the caller already has it.</summary>
+    private Composition LoadedComposition(Composition? given, SweepSpec spec) =>
+        given ?? LoadComposition(spec.Composition);
 
     /// <summary>Every time the sweep steps through: one per frame at <paramref name="fps"/> from 0
     /// to the last requested time, plus any requested time that does not land on a step. Requested

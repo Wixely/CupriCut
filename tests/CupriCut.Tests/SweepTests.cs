@@ -112,7 +112,9 @@ public sealed class SweepTests
     {
         // The knob remains for a shared instance that wants to bound what one caller can spend.
         using var harness = new Harness(o => o.MaxFrames = 10);
-        var name = harness.WriteComposition("keyframed.html", Harness.Keyframed);
+        // A composition that genuinely needs sweeping - a pure one renders one frame for one frame
+        // and never approaches a ceiling.
+        var name = harness.WriteComposition("transitioned.html", Harness.Transitioned);
 
         // One frame is asked for; 91 have to be rendered to reach it. The limit is about the cost.
         var ex = Assert.Throws<CutPolicyException>(() => harness.Cut.Sweep(
@@ -121,11 +123,74 @@ public sealed class SweepTests
         Assert.Contains("every frame before it", ex.Message);
     }
 
-    private static string Digest(Harness harness, string composition, double[] times, double fps = 30)
+    [Fact]
+    public void A_pure_composition_renders_only_the_frames_asked_for()
+    {
+        // The whole point: @keyframes carries no state between Animate calls, so reaching t=3 costs
+        // one render rather than ninety-one. Measured byte-identical to the swept frame.
+        using var harness = new Harness();
+        var name = harness.WriteComposition("keyframed.html", Harness.Keyframed);
+
+        var rendered = 0;
+        var report = harness.Cut.Sweep(
+            new SweepSpec { Composition = name, Width = 200, Height = 100, Times = [3.0] },
+            _ => rendered++);
+
+        Assert.True(report.Purity.PureInTime);
+        Assert.Equal(1, report.StepsRendered);
+        Assert.Equal(1, rendered);
+    }
+
+    [Fact]
+    public void A_pure_composition_renders_the_same_pixels_swept_or_direct()
+    {
+        // The claim the fast path rests on. If this ever stops being true, the fast path is wrong
+        // and this test is how that is found out.
+        using var harness = new Harness();
+        var name = harness.WriteComposition("keyframed.html", Harness.Keyframed);
+
+        var direct = Digest(harness, name, [0.4, 0.9, 1.6]);
+        var swept = Digest(harness, name, [0.4, 0.9, 1.6], force: true);
+
+        Assert.Equal(swept, direct);
+    }
+
+    [Fact]
+    public void A_composition_with_a_transition_is_still_swept()
+    {
+        // Conservative on purpose: a transition interpolates from the previous frame, so the
+        // intermediate frames are what make t=1 mean anything.
+        using var harness = new Harness();
+        var name = harness.WriteComposition("transitioned.html", Harness.Transitioned);
+
+        var report = harness.Cut.Sweep(
+            new SweepSpec { Composition = name, Width = 200, Height = 100, Times = [1.0] }, _ => { });
+
+        Assert.False(report.Purity.PureInTime);
+        Assert.Contains("transition", report.Purity.Summary);
+        Assert.Equal(31, report.StepsRendered);        // 0 to 1 inclusive at 30 fps
+        Assert.Equal(30, report.FramesDiscarded);
+    }
+
+    [Fact]
+    public void Forcing_a_sweep_overrides_the_analysis()
+    {
+        using var harness = new Harness();
+        var name = harness.WriteComposition("keyframed.html", Harness.Keyframed);
+
+        var report = harness.Cut.Sweep(
+            new SweepSpec { Composition = name, Width = 200, Height = 100, Times = [1.0], ForceSweep = true },
+            _ => { });
+
+        Assert.False(report.Purity.PureInTime);
+        Assert.Equal(31, report.StepsRendered);
+    }
+
+    private static string Digest(Harness harness, string composition, double[] times, double fps = 30, bool force = false)
     {
         var hash = MD5.Create();
         harness.Cut.Sweep(
-            new SweepSpec { Composition = composition, Width = 400, Height = 200, Times = times, SweepFps = fps },
+            new SweepSpec { Composition = composition, Width = 400, Height = 200, Times = times, SweepFps = fps, ForceSweep = force },
             frame =>
             {
                 var png = FrameEncoder.Encode(frame.Image);

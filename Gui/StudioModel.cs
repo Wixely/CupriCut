@@ -38,6 +38,12 @@ public sealed class StudioModel
     /// <summary>True once a frame has been previewed, so the window can stop showing the placeholder.</summary>
     public bool HasFrame { get; set; }
 
+    /// <summary>The clock is advancing in real time.</summary>
+    public bool Playing { get; set; }
+
+    /// <summary>Whether this composition needs sweeping, in the words the status strip uses.</summary>
+    public string PurityNote { get; set; } = string.Empty;
+
     /// <summary>Annotation mode: a drag on the preview draws a region instead of doing nothing.</summary>
     public bool Marking { get; set; }
 
@@ -85,6 +91,10 @@ public sealed class StudioModel
     public string MarkClass => Marking ? "armed" : "";
 
     public string MarkLabel => Marking ? "Marking: drag on the frame" : "Mark a region";
+
+    public string PlayLabel => Playing ? "Pause" : "Play";
+
+    public string PlayClass => Playing ? "armed" : "";
 
     /// <summary>The scrub bar is a 0–100 slider, because a slider bound to seconds would need its
     /// range to change with the project and re-binding a live control mid-drag is not worth it.</summary>

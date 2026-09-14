@@ -49,10 +49,21 @@ And one measurement that shapes the whole tool surface:
 from what the last frame held. Both strategies repeat perfectly; they simply disagree with each
 other.
 
-So every tool here takes one reading of "the frame at `t`": **sweep from 0 and return the last
-frame.** At 5.6 ms that is half a second for `t = 3 s` at 30 fps, and it is *correct* — the agent
-sees the frame the video will contain. Anything cheaper is a preview that lies. `lint` reports
-whether a composition is pure in `t`, because a pure one can be sampled directly at 5.6 ms.
+So "the frame at `t`" needs one definition — but **only for compositions that carry state between
+frames.** `@keyframes` does not. Measured on the three worked compositions here, a direct render is
+**byte-identical** to a swept one and 10–45× faster, so CupriCut decides per composition:
+
+| | |
+|---|---|
+| **pure in `t`** — no transitions, toasts or scroll | rendered directly. One frame costs one frame. |
+| **not pure** | swept from 0, because a transition interpolates from whatever the last frame held |
+
+The analysis is conservative: anything unrecognised counts as impure, because a false "pure"
+renders the wrong frame silently while a false "impure" only costs time. `--force-sweep` overrides
+it for proving a difference.
+
+What that is worth: scrubbing to `t = 9` in a 120 fps project was 1080 frames and 8.6 s. It is now
+one frame.
 
 ## What it will promise about determinism
 
@@ -170,8 +181,10 @@ open a PNG somewhere else and then put the problem into prose.
 
 ![The studio window](docs/studio.png)
 
-Pick a project, scrub to a frame, drag a box round what is wrong and type a sentence. The agent then
-reads it back:
+Pick a project, **play it in real time**, scrub to a frame, drag a box round what is wrong and type
+a sentence. The window holds the composition open between frames — opening and settling costs
+25–370 ms, the frame itself 3–7 ms — so playback runs at 144–296 fps of headroom against a 30 fps
+clock. The agent then reads the annotation back:
 
 ```
 list_annotations(project: "review")

@@ -33,6 +33,10 @@ public sealed record SweepSpec
 
     /// <summary>Clear to transparent and keep the alpha channel. Null is unset.</summary>
     public bool? Alpha { get; init; }
+
+    /// <summary>Sweep every intermediate frame even when the composition does not need it. The
+    /// analysis is conservative, so this is for proving a difference rather than for safety.</summary>
+    public bool ForceSweep { get; init; }
 }
 
 /// <summary>A frame the sweep was asked for. The image is owned by the sweep and disposed as soon
@@ -51,4 +55,12 @@ public sealed record SweepReport(
     double LastTime,
     double ElapsedMs,
     bool Settled,
-    IReadOnlyList<string> FontProblems);
+    IReadOnlyList<string> FontProblems)
+{
+    /// <summary>Whether the composition needed sweeping at all.</summary>
+    public PurityVerdict Purity { get; init; } = PurityVerdict.Pure;
+
+    /// <summary>Frames rendered purely to carry state to the ones that were asked for. Zero when the
+    /// composition is pure in <c>t</c>.</summary>
+    public int FramesDiscarded => Math.Max(0, StepsRendered - FramesKept);
+}

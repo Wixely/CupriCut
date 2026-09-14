@@ -93,6 +93,8 @@ public sealed class StudioApp(StudioModel model) : CupriApp
               </div>
 
               <div class="scrub">
+                <cupri-button data-cut-action="rewind" class="transport">&#9198;</cupri-button>
+                <cupri-button data-cut-action="play" class="transport {{PlayClass}}">{{PlayLabel}}</cupri-button>
                 <div class="tlabel">{{TimeLabel}}</div>
                 <cupri-slider min="0" max="100" value="{{Scrub}}"></cupri-slider>
                 <div class="tlabel right">{{DurationLabel}}</div>
@@ -105,6 +107,7 @@ public sealed class StudioApp(StudioModel model) : CupriApp
               </div>
 
               <div class="status">{{Status}}</div>
+              <div class="purity">{{PurityNote}}</div>
             </div>
 
             <div class="notes">
@@ -167,12 +170,16 @@ public sealed class StudioApp(StudioModel model) : CupriApp
         .ptitle { flex:1; font-size:17px; font-weight:700; color:#f4f6fb; }
         .psize  { width:110px; font-size:11px; color:#63718a; }
 
-        /* The preview takes whatever vertical space is left; the surface fills it. */
+        /* The preview takes whatever vertical space is left; the surface fills it.
+           position:relative so the two overlays below can sit ON the stage rather than in the
+           column with it - a negative margin put them in the flow, so hiding the placeholder when
+           the first frame arrived RESIZED the stage under the pointer. A box that changes size the
+           moment a preview lands is a box you cannot draw an accurate region on. */
         .stagewrap { flex:1; margin:12px 18px 0 18px; background:#0a0d13;
-                     border:1px solid #223047; border-radius:6px; }
+                     border:1px solid #223047; border-radius:6px; position:relative; }
         .stage { width:100%; height:100%; }
-        .placeholder { margin:-260px 0 0 18px; font-size:13px; color:#3f4c63; }
-        .spinner { margin:-18px 0 0 18px; font-size:11px; color:#d9642a; }
+        .placeholder { position:absolute; left:18px; top:50%; font-size:13px; color:#3f4c63; }
+        .spinner { position:absolute; left:18px; bottom:10px; font-size:11px; color:#d9642a; }
 
         .scrub { display:flex; align-items:center; margin:12px 18px 0 18px; }
         .tlabel { width:58px; font-size:12px; font-weight:700; color:#8b98ad; }
@@ -184,7 +191,9 @@ public sealed class StudioApp(StudioModel model) : CupriApp
         .tools .cupri-textfield { flex:1; }
         .armed { background:#d9642a; }
 
-        .status { margin:10px 18px 12px 18px; font-size:11px; color:#63718a; }
+        .status { margin:10px 18px 2px 18px; font-size:11px; color:#63718a; }
+        .purity { margin:0 18px 12px 18px; font-size:11px; color:#44506680; color:#455066; }
+        .transport { margin-right:8px; }
 
         .nrow { margin:0 10px 8px 10px; padding:9px 11px; background:#151d2a; border-radius:6px; }
         .nrow.done { background:#121a25; }

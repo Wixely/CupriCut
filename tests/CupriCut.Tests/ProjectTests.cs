@@ -53,7 +53,11 @@ public sealed class ProjectTests
 
         Assert.Equal((640, 360), frames.Single());
         Assert.Equal(10, report.SweepFps);
-        Assert.Equal(11, report.StepsRendered);   // 0 to 1 inclusive at 10 fps
+        // One frame asked for, one frame rendered: this composition is pure in t, so there is
+        // nothing to sweep to. An impure one would render all 11 to reach t=1.
+        Assert.True(report.Purity.PureInTime);
+        Assert.Equal(1, report.StepsRendered);
+        Assert.Equal(0, report.FramesDiscarded);
     }
 
     [Fact]

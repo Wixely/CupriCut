@@ -184,7 +184,26 @@ built on, so it goes first.
     has no `pointer-events`, so a sibling drawn on top swallowed the drag and the walk up its
     ancestors never reached the element carrying the mark attribute. A test now asserts that
     whatever sits under the preview centre still leads to that attribute.
-24. **Project folders**, with drag and drop in and out.
+24. ~~**Project folders**, with drag and drop.~~ **Done, with one half refused.**
+
+    A folder is a directory under the project root — not an index, not a field in a file — so
+    nothing can get out of step with where the projects actually are, and organising them with a
+    file manager works exactly as well. `ListFolders`, `CreateFolder` and `MoveProject` on the
+    service; `move_project` and `create_folder` as tools; a **Projects** page in the window where
+    folders are columns and projects are cards.
+
+    The dragging is `cupri-board`'s, not ours — that component exists for precisely this. `OnReorder`
+    hands back the source and target lists as *elements*, so each column carries its folder path as
+    an attribute and a drop resolves straight back to a destination. Reordering WITHIN a folder is
+    declined rather than accepted: projects are listed by name and there is nowhere to record a
+    hand-made order, so taking the drag would show a reordering that vanished on the next refresh.
+
+    **Drag and drop in and out of the OS is not possible and was not faked.** The desktop host has
+    no file-drop support at all — checked, not assumed — so dragging an `.html` in from Explorer, or
+    a project out to the desktop, cannot work without a host change. The honest substitutes are
+    there instead: **Open in file manager** on the projects page, and **Open folder** after an
+    export. Worth raising with CupriFace, because it is a gap for any desktop application built on
+    it rather than a CupriCut problem.
 
 ## Milestone 2 — the timeline (3–4 days)
 

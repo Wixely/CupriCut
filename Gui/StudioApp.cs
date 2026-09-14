@@ -64,6 +64,7 @@ public sealed class StudioApp(StudioModel model) : CupriApp
           <div class="bar">
             <div class="brand">CupriCut</div>
             <cupri-button data-cut-view="studio" class="nav {{StudioNavClass}}">Studio</cupri-button>
+            <cupri-button data-cut-view="projects" class="nav {{ProjectsNavClass}}">Projects</cupri-button>
             <cupri-button data-cut-view="settings" class="nav {{SettingsNavClass}}">Settings</cupri-button>
             <div class="barsub">{{ServerState}}</div>
           </div>
@@ -175,6 +176,44 @@ public sealed class StudioApp(StudioModel model) : CupriApp
               </div>
             </div>
 
+          </div>
+
+          <!-- The projects board. Folders are columns and projects are cards, and a card is
+               dragged between them by its grip - which is cupri-board's whole purpose, so the
+               dragging is the engine's rather than ours. OnReorder hands back the source and target
+               <cupri-reorder> ELEMENTS, so each column carries the folder it stands for as an
+               attribute and a drop resolves straight back to a destination path. -->
+          <div class="projects {{ProjectsClass}}">
+            <div class="ptop">
+              <div class="ptitle">Projects</div>
+              <div class="pnew">
+                <cupri-textfield value="{{NewFolder}}" placeholder="New folder name"></cupri-textfield>
+                <cupri-button data-cut-action="new-folder">Add folder</cupri-button>
+                <cupri-button data-cut-action="open-projects">Open in file manager</cupri-button>
+              </div>
+            </div>
+
+            <div class="phint">Drag a project by its grip to move it into another folder. Folders are
+              real directories under the project root, so organising them here and in a file manager
+              are the same thing.</div>
+
+            <div class="pempty {{NoFoldersClass}}">No projects yet. Save one with save_project.</div>
+
+            <cupri-board>
+              <div data-repeat="Folders" class="fcol">
+                <div class="fhead">{{Title}}</div>
+                <div class="fcount">{{Count}}</div>
+                <cupri-reorder data-cut-folder="{{Path}}">
+                  <cupri-reorder-item data-repeat="Projects">
+                    <div class="pcard" data-cut-open="{{File}}">
+                      <div class="pcname">{{Name}}</div>
+                      <div class="pcdetail">{{Detail}}</div>
+                    </div>
+                  </cupri-reorder-item>
+                </cupri-reorder>
+                <div class="fempty {{EmptyClass}}">Drop a project here</div>
+              </div>
+            </cupri-board>
           </div>
 
           <div class="settings {{SettingsClass}}">
@@ -304,6 +343,22 @@ public sealed class StudioApp(StudioModel model) : CupriApp
         .ntext   { font-size:12px; color:#e8edf5; margin-top:5px; }
         /* flex:none because .tools is a flex row and the label was being shrunk into a clip
            rather than pushing the dropdown along. */
+        .projects { padding:18px 24px; }
+        .ptop    { display:flex; align-items:center; margin-bottom:10px; }
+        .ptitle  { font-size:20px; font-weight:700; color:#e8edf6; flex:1; }
+        .pnew    { display:flex; align-items:center; gap:8px; }
+        .pnew .cupri-textfield { width:220px; }
+        .phint   { font-size:13px; color:#6d7c95; margin-bottom:18px; }
+        .pempty  { font-size:14px; color:#6d7c95; }
+        .fcol    { width:250px; margin-right:16px; }
+        .fhead   { font-size:14px; font-weight:700; color:#e8edf6; }
+        .fcount  { font-size:12px; color:#5a6a85; margin:2px 0 10px 0; }
+        .fempty  { font-size:12px; color:#455066; padding:14px 0 0 0; }
+        .pcard   { padding:2px 0; }
+        /* The card is the engine's own reorder-item, which is LIGHT. Near-white text designed for
+           the dark chrome around it was all but invisible on top of one. */
+        .pcname  { font-size:14px; font-weight:700; color:#10131a; }
+        .pcdetail{ font-size:12px; color:#5a6478; margin-top:3px; }
         .bgrow   { display:flex; align-items:center; gap:8px; flex:none; margin-right:20px; }
         .bglabel { font-size:13px; color:#9fb0c9; white-space:nowrap; }
         .fmt     { width:280px; flex:none; margin-right:10px; }

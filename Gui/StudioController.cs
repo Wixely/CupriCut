@@ -69,6 +69,11 @@ public sealed partial class StudioController : IDisposable
         document.OnAction("data-cut-view", e => { _model.View = e.Value; return true; });
         document.OnAction("data-cut-tab", e => { _model.SettingsTab = e.Value; return true; });
 
+        // Dragging a project card from one folder column to another. The engine owns the gesture -
+        // cupri-board exists for exactly this - and hands back the source and target lists as
+        // ELEMENTS, which is why each column carries its folder as an attribute.
+        document.OnReorder(OnProjectDropped);
+
         // The region drag. Returning true on Down captures the pointer for this element, so the
         // move and up phases arrive here rather than going to the ordinary gesture recogniser.
         document.OnPointer(StudioApp.MarkAttribute, OnMark);
@@ -141,11 +146,50 @@ public sealed partial class StudioController : IDisposable
                     return new ProjectRow { File = file, Name = file, Detail = "unreadable: " + ex.Message };
                 }
             })];
+
+            _model.Folders = BuildFolders(_model.Projects);
         }
         catch (Exception ex)
         {
             _model.Status = "Could not list projects: " + ex.Message;
         }
+    }
+
+    /// <summary>
+    /// The same projects, grouped into the columns the board draws.
+    ///
+    /// <para>Built from the rows that were just loaded rather than by reading disk again - one
+    /// listing, two views of it, so the rail and the board can never disagree about what exists.
+    /// Every folder that EXISTS gets a column even when it is empty: a folder someone made and has
+    /// not filled is still somewhere to drop things, and a column is the only place to drop.</para>
+    /// </summary>
+    private List<FolderColumn> BuildFolders(IReadOnlyList<ProjectRow> rows)
+    {
+        var columns = new Dictionary<string, FolderColumn>(StringComparer.Ordinal);
+
+        FolderColumn Column(string path) =>
+            columns.TryGetValue(path, out var existing)
+                ? existing
+                : columns[path] = new FolderColumn { Path = path };
+
+        // The top level always has a column, because it is always somewhere you can move a project
+        // back to.
+        Column(string.Empty);
+        foreach (var folder in _cut.ListFolders()) Column(folder);
+
+        foreach (var row in rows)
+        {
+            var slash = row.File.LastIndexOf('/');
+            var folder = slash < 0 ? string.Empty : row.File[..slash];
+            Column(folder).Projects.Add(new ProjectCard
+            {
+                File = row.File,
+                Name = row.Name,
+                Detail = row.Detail,
+            });
+        }
+
+        return [.. columns.Values.OrderBy(c => c.Path, StringComparer.Ordinal)];
     }
 
     // ---- commands -------------------------------------------------------------------------
@@ -218,6 +262,15 @@ public sealed partial class StudioController : IDisposable
                 OpenLastExport();
                 break;
 
+            case "new-folder":
+                NewFolder();
+                break;
+
+            case "open-projects":
+                try { Reveal.InFileManager(_cut.ProjectRoot); }
+                catch (Exception ex) { _model.Status = ex.Message; }
+                break;
+
             case "toggle-checks":
                 _model.ShowAllChecks = !_model.ShowAllChecks;
                 ShowCalibration();
@@ -238,6 +291,77 @@ public sealed partial class StudioController : IDisposable
                 _model.Status = "Edit cancelled.";
                 MarkOverlayChanged();
                 break;
+        }
+    }
+
+    /// <summary>The attribute each folder column carries, so a drop resolves back to a path.</summary>
+    public const string FolderAttribute = "data-cut-folder";
+
+    /// <summary>
+    /// A project card was dragged onto a folder.
+    ///
+    /// <para>Moving between folders is the whole feature; reordering WITHIN one is ignored on
+    /// purpose. Projects are listed in name order and there is nowhere to record a hand-made order,
+    /// so accepting the drag would show a reordering that vanished on the next refresh - which
+    /// reads as a bug rather than as a thing that was never offered.</para>
+    /// </summary>
+    public void OnProjectDropped(CupriDocument.ReorderEvent e)
+    {
+        var from = e.List?.GetAttribute(FolderAttribute);
+        var to = e.ToList?.GetAttribute(FolderAttribute);
+        if (from is null || to is null) return;
+
+        if (string.Equals(from, to, StringComparison.Ordinal))
+        {
+            _model.Status = "Projects are listed by name, so there is no order to change within a folder.";
+            return;
+        }
+
+        // Taken from the model the board was built from rather than from the DOM: the indices are
+        // into that list, and it is the thing that knows which file each card stands for.
+        var column = _model.Folders.FirstOrDefault(f => f.Path == from);
+        if (column is null || e.From < 0 || e.From >= column.Projects.Count) return;
+        var card = column.Projects[e.From];
+
+        try
+        {
+            var moved = _cut.MoveProject(card.File, to);
+
+            // The open project is addressed by path, so moving it under the window's feet would
+            // leave the preview pointing at a file that is no longer there.
+            if (string.Equals(_model.Selected, card.File, StringComparison.OrdinalIgnoreCase))
+                _model.Selected = moved;
+
+            _model.Status = $"Moved {card.Name} to {(to.Length == 0 ? "the top level" : to)}.";
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            _model.Status = ex.Message;
+            _log.LogWarning(ex, "Could not move {Project} to {Folder}", card.File, to);
+        }
+    }
+
+    /// <summary>Make a folder from the field on the projects page.</summary>
+    private void NewFolder()
+    {
+        var name = _model.NewFolder.Trim();
+        if (name.Length == 0)
+        {
+            _model.Status = "Name the folder first.";
+            return;
+        }
+
+        try
+        {
+            var created = _cut.CreateFolder(name);
+            _model.NewFolder = string.Empty;
+            _model.Status = $"Created {created}.";
+            Refresh();
+        }
+        catch (Exception ex)
+        {
+            _model.Status = ex.Message;
         }
     }
 

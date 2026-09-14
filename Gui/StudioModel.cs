@@ -53,16 +53,28 @@ public sealed class StudioModel
     // view" is a computed class driving display:none - the same mechanism the empty states use.
     // Fine for a handful of views; it would want rethinking past a dozen.
 
-    /// <summary>"studio" or "settings".</summary>
+    /// <summary>"studio", "projects" or "settings".</summary>
     public string View { get; set; } = "studio";
 
     /// <summary>Which settings tab: "server", "render" or "calibrate".</summary>
     public string SettingsTab { get; set; } = "server";
 
     public string StudioClass => View == "studio" ? "" : "hidden";
+    public string ProjectsClass => View == "projects" ? "" : "hidden";
     public string SettingsClass => View == "settings" ? "" : "hidden";
     public string StudioNavClass => View == "studio" ? "navon" : "";
+    public string ProjectsNavClass => View == "projects" ? "navon" : "";
     public string SettingsNavClass => View == "settings" ? "navon" : "";
+
+    /// <summary>The projects grouped by the folder they are in, for the board. Rebuilt whenever
+    /// the project list is, because a folder here IS a directory on disk - there is no second
+    /// record of it that could disagree.</summary>
+    public List<FolderColumn> Folders { get; set; } = [];
+
+    /// <summary>What the "new folder" field holds.</summary>
+    public string NewFolder { get; set; } = string.Empty;
+
+    public string NoFoldersClass => Folders.Count == 0 ? "" : "hidden";
 
     public string ServerTabClass => SettingsTab == "server" ? "" : "hidden";
     public string RenderTabClass => SettingsTab == "render" ? "" : "hidden";
@@ -232,6 +244,36 @@ public sealed class StudioModel
         get => Duration <= 0 ? 0 : Math.Clamp(Time / Duration * 100, 0, 100);
         set => Time = Math.Clamp(value / 100 * Duration, 0, Duration);
     }
+}
+
+
+/// <summary>One folder's column on the projects board.</summary>
+public sealed class FolderColumn
+{
+    /// <summary>The folder's relative path, or empty for the top level. This is what a move is
+    /// addressed to, and what the column carries as an attribute so a drop can be resolved back to
+    /// a destination.</summary>
+    public string Path { get; set; } = string.Empty;
+
+    /// <summary>What the column is headed. The top level has no name of its own, and "" is not a
+    /// heading.</summary>
+    public string Title => Path.Length == 0 ? "Top level" : Path;
+
+    public List<ProjectCard> Projects { get; set; } = [];
+
+    public string Count => Projects.Count == 1 ? "1 project" : $"{Projects.Count} projects";
+
+    /// <summary>Shown in an empty column, because a column with nothing in it and nothing said is
+    /// indistinguishable from one that failed to load.</summary>
+    public string EmptyClass => Projects.Count == 0 ? "" : "hidden";
+}
+
+/// <summary>One project card on the board.</summary>
+public sealed class ProjectCard
+{
+    public string File { get; set; } = string.Empty;
+    public string Name { get; set; } = string.Empty;
+    public string Detail { get; set; } = string.Empty;
 }
 
 /// <summary>One project in the picker.</summary>

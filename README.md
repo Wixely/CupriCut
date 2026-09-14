@@ -96,6 +96,7 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
 | `calibrate` | what this ffmpeg can really do, and the fastest render parallelism | **in** |
 | `save_project` / `load_project` / `update_project` / `list_projects` / `attach_asset` | the work, in a file a later run can reopen | **in** |
+| `move_project` / `create_folder` | projects in folders, which is the difference between three projects and thirty | **in** |
 | `inspect` | the timeline: tracks, elements and their windows, images referenced, duration | Milestone 2 |
 | `lint` | the determinism verdict, and whether the composition is pure in `t` | Milestone 2 |
 
@@ -219,6 +220,19 @@ list_annotations(project: "review")
 resolve_annotation(project: "review", id: "ad54d3d2",
                    resolution: "moved the logo keyframe from 1.2s to 0.6s")
 ```
+
+### Projects live in folders
+
+![The projects board](docs/projects.png)
+
+Folders are columns, projects are cards, and a card is dragged between them by its grip. A folder is
+just a directory under the project root — not an index, not a field in a file — so organising them
+here and organising them in a file manager are the same act, and neither can get out of step with
+the other. `move_project` and `create_folder` do the same from an agent.
+
+Dragging a file **in from the desktop** does not work, and is not pretended to: the window host has
+no file-drop support, so there is nothing to hook. **Open in file manager** is the substitute, and
+it is one click.
 
 Annotations are stored **in the project**, because that is already the file a later run opens, and
 in **normalised 0–1 coordinates**, so a note drawn on a 1280×720 preview still means the same region

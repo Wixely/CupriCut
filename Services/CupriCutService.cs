@@ -208,6 +208,90 @@ public sealed class CupriCutService
             .Order(StringComparer.Ordinal)];
     }
 
+    /// <summary>
+    /// The folders projects are organised into, as relative paths with <c>/</c> separators.
+    ///
+    /// <para>Derived from where the projects actually are rather than kept as a list somewhere: a
+    /// folder IS a directory under the project root, so there is nothing to get out of step. An
+    /// empty directory is included too, because a folder someone made and has not filled yet is
+    /// still a folder they made.</para>
+    /// </summary>
+    public IReadOnlyList<string> ListFolders()
+    {
+        var root = ProjectRoot;
+        if (!Directory.Exists(root)) return [];
+
+        return [.. Directory.EnumerateDirectories(root, "*", SearchOption.AllDirectories)
+            .Select(d => Path.GetRelativePath(root, d).Replace('\\', '/'))
+            .Order(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Create a folder under the project root.
+    /// </summary>
+    /// <returns>Its relative path, which is what everything else refers to it by.</returns>
+    public string CreateFolder(string relative)
+    {
+        var folder = FolderPath(relative);
+        Directory.CreateDirectory(folder);
+        return Path.GetRelativePath(ProjectRoot, folder).Replace('\\', '/');
+    }
+
+    /// <summary>
+    /// Move a project to another name or folder.
+    ///
+    /// <para>Both ends go through <see cref="ResolveProject"/>, so neither can leave the project
+    /// root and neither can be something that is not a project. Refuses to overwrite: two projects
+    /// with the same name is a thing to be told about, not to resolve by destroying one.</para>
+    /// </summary>
+    /// <param name="from">The project as it is now.</param>
+    /// <param name="to">Where it should be - a folder, or a folder and a new name.</param>
+    /// <returns>Its new relative path.</returns>
+    public string MoveProject(string from, string to)
+    {
+        var source = ResolveProject(from, forWriting: false);
+
+        // "promos" means "into promos, keeping the name". Only a target that names a project is
+        // taken as a rename, so moving is the common case and needs no repetition of the name.
+        var target = CutProject.IsProjectPath(to)
+            ? to
+            : CombineRelative(to, Path.GetFileName(source));
+
+        var destination = ResolveProject(target, forWriting: true);
+
+        if (string.Equals(source, destination, StringComparison.OrdinalIgnoreCase))
+            return Path.GetRelativePath(ProjectRoot, destination).Replace('\\', '/');
+
+        if (File.Exists(destination))
+            throw new CutPolicyException(
+                $"There is already a project at '{target}'. Rename one of them - moving over it would destroy work that is not yours to destroy.");
+
+        lock (_projectLock)
+        {
+            File.Move(source, destination);
+        }
+
+        _log.LogInformation("Moved project {From} to {To}", from, target);
+        return Path.GetRelativePath(ProjectRoot, destination).Replace('\\', '/');
+    }
+
+    /// <summary>A folder under the project root, checked the way a project path is.</summary>
+    private string FolderPath(string relative)
+    {
+        if (string.IsNullOrWhiteSpace(relative)) return ProjectRoot;
+        if (CutProject.IsProjectPath(relative))
+            throw new CutPolicyException($"'{relative}' names a project, not a folder.");
+
+        var root = ProjectRoot;
+        var full = Path.GetFullPath(Path.IsPathRooted(relative) ? relative : Path.Combine(root, relative));
+        if (!IsUnder(full, root))
+            throw new CutPolicyException($"'{relative}' resolves outside Cut:ProjectRoot ({root}).");
+        return full;
+    }
+
+    private static string CombineRelative(string folder, string name) =>
+        string.IsNullOrWhiteSpace(folder) ? name : folder.Replace('\\', '/').TrimEnd('/') + "/" + name;
+
     /// <summary>Read, change, write - the shape every annotation edit needs, done in one place so a
     /// concurrent GUI edit and MCP edit cannot interleave a lost update.</summary>
     public CutProject EditProject(string name, Action<CutProject> edit)

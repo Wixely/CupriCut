@@ -61,6 +61,11 @@ public sealed class DoctorTests(ITestOutputHelper output)
         [
             new AnnotationRow { Id = "a1", Note = "logo enters too late", At = "t = 1.2s", FrameAt = "frame 36 at 30 fps", Region = "320x180 at (40,600)" },
         ],
+        Folders =
+        [
+            new FolderColumn { Path = "", Projects = [new ProjectCard { File = "hero.cut.json", Name = "Hero card", Detail = "1280x720" }] },
+            new FolderColumn { Path = "promos" },
+        ],
         Calibration =
         [
             new CalibrationRow { Group = "Tools", Name = "ffmpeg", Ok = true, Detail = "ffmpeg version N-91454" },

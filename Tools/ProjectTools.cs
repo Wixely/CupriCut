@@ -190,6 +190,7 @@ public static class ProjectTools
                 return (object)new
                 {
                     file = relative,
+                    folder = Path.GetDirectoryName(relative)?.Replace('\\', '/') ?? string.Empty,
                     name = project.Name,
                     project.Description,
                     size = $"{project.Render.Width}x{project.Render.Height}",
@@ -205,7 +206,54 @@ public static class ProjectTools
             }
         });
 
-        return JsonSerializer.Serialize(new { root, projects }, JsonOpts.Default);
+        return JsonSerializer.Serialize(new { root, folders = cut.ListFolders(), projects }, JsonOpts.Default);
+    }
+
+    [McpServerTool(Name = "move_project"),
+     Description("""
+        Move a project into a folder, or rename it.
+
+        A folder as the destination keeps the name, so move_project("hero", "promos") gives
+        promos/hero.cut.json - moving is the common case and should not need the name said twice.
+        A destination that names a .cut.json is a rename. An empty destination moves it back to the
+        top level.
+
+        Refuses to move over an existing project: two with the same name is something to be told
+        about, not to resolve by destroying one. Folders are created as needed.
+        """)]
+    public static string MoveProject(
+        CupriCutService cut,
+        [Description("The project as it is now, e.g. 'hero' or 'promos/hero.cut.json'.")] string project,
+        [Description("A folder ('promos'), a folder and a new name ('promos/opener.cut.json'), or '' for the top level.")] string destination)
+    {
+        var moved = cut.MoveProject(project, destination);
+        return JsonSerializer.Serialize(new
+        {
+            from = project,
+            file = moved,
+            folder = Path.GetDirectoryName(moved)?.Replace('\\', '/') ?? string.Empty,
+            root = cut.ProjectRoot,
+        }, JsonOpts.Default);
+    }
+
+    [McpServerTool(Name = "create_folder"),
+     Description("""
+        Make a folder under the project root to organise projects into.
+
+        Rarely needed on its own - save_project and move_project create whatever folders their path
+        names. This is for laying out a structure before there is anything to put in it.
+        """)]
+    public static string CreateFolder(
+        CupriCutService cut,
+        [Description("Relative path, e.g. 'promos/spring'. Slashes nest.")] string folder)
+    {
+        var created = cut.CreateFolder(folder);
+        return JsonSerializer.Serialize(new
+        {
+            folder = created,
+            root = cut.ProjectRoot,
+            folders = cut.ListFolders(),
+        }, JsonOpts.Default);
     }
 
     [McpServerTool(Name = "attach_asset"),

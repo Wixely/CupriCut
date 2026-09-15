@@ -202,8 +202,8 @@ built on, so it goes first.
     no file-drop support at all — checked, not assumed — so dragging an `.html` in from Explorer, or
     a project out to the desktop, cannot work without a host change. The honest substitutes are
     there instead: **Open in file manager** on the projects page, and **Open folder** after an
-    export. Worth raising with CupriFace, because it is a gap for any desktop application built on
-    it rather than a CupriCut problem.
+    export. Raised as [CupriFace#182](https://github.com/Wixely/CupriFace/issues/182), because it is a
+    gap for any desktop application built on it rather than a CupriCut problem.
 
 ## Milestone 2 — the timeline (3–4 days)
 
@@ -366,17 +366,31 @@ None is confirmed as a bug: each is a case where the engine differs from a brows
 first guess about the cause was wrong, so each wants an isolated reproduction before it is filed.
 The rule this repository already follows applies — measure it, then claim it.
 
-**`line-height` is a downward offset, not a line box.** Isolated on CupriFace 0.25.0, and it is one
-bug rather than the four separate mysteries this section used to list:
+**`line-height` in `px` produces a line box 3x too tall.** Filed as
+[CupriFace#181](https://github.com/Wixely/CupriFace/issues/181). Measured on 0.25.0 by reading the
+text node's own box off the render tree, at `font-size: 48px`:
 
-| box | browser | engine |
-|---|---|---|
-| no `line-height` | text at the top | text at the top — correct |
-| `line-height: 120px` on a 120px box | one line, vertically centred | text drawn **entirely below the box**, outside it |
-| `line-height: 48px`, `font-size: 48px` | text at the top | text pushed down ~48px |
+| declaration | expected | actual | |
+|---|---|---|---|
+| *(none)* | 57.6 (48 x 1.2) | 57.6 | correct |
+| `line-height: 120px` | 120 | **360** | x3 |
+| `line-height: 60px` | 60 | **180** | x3 |
+| `line-height: 48px` | 48 | **144** | x3 |
+| `line-height: 24px` | 24 | **72** | x3 |
+| `line-height: 1.5` | 72 | 72 | correct |
+| `line-height: 2em` | 96 | **57.6** | ignored, no diagnostic |
+| `line-height: 150%` | 72 | **57.6** | ignored, no diagnostic |
 
-The value is added to the text's position instead of defining a box the glyph is centred within. It
-explains every layout problem the samples hit, and the conclusions drawn from them were wrong:
+Exactly 3x at four different values, so a fixed factor rather than rounding or a font-metric
+interaction. The glyph sits at the BOTTOM of that oversized box, which is why a box whose height
+equals its line-height paints its text entirely outside itself.
+
+**The first write-up of this, before the numbers, said it was "a downward offset added to the text
+position".** That was wrong, and wrong in a way that would have made a useless bug report: the text
+is not offset, its line box is too tall. Worth remembering that the plausible mechanism arrived at
+by looking at renders was not the mechanism.
+
+It explains every layout problem the samples hit, and the conclusions drawn from them were wrong:
 
 - Text pushed down by a line-height pushed everything after it off the frame — the title card lost
   its last three elements this way.
@@ -386,8 +400,14 @@ explains every layout problem the samples hit, and the conclusions drawn from th
   does.
 - A box with an explicit height and a matching line-height rendered as an empty rectangle.
 
-Worth filing: it is reproducible in six lines, silently ruins vertical rhythm, and the workaround
-(never set `line-height`) is not one anybody would guess.
+Filed as [CupriFace#181](https://github.com/Wixely/CupriFace/issues/181): reproducible in six lines,
+silently ruins vertical rhythm, and the workaround (never set `line-height`) is not one anybody
+would guess.
+
+**OS file drop** is filed separately as
+[CupriFace#182](https://github.com/Wixely/CupriFace/issues/182) — `DesktopHost` surfaces no drop
+event, so no app on this engine can accept a file dragged onto its window. The platform primitives
+(`SDL_DROPFILE`, `glfwSetDropCallback`) are already there in both hosts.
 
 Still open, and genuinely not understood:
 

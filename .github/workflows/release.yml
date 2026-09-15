@@ -1,0 +1,223 @@
+# Cut a release: four zips and a multi-arch image, on a v* tag.
+#
+# The matrix is win-x64 / linux-x64 x framework-dependent / self-contained, which is the house
+# style's, and each RID is built on its OWN runner rather than cross-published. SkiaSharp and
+# HarfBuzz ship native binaries per RID and a cross-publish resolves them from NuGet without ever
+# loading one - so it succeeds, and the first person to find out otherwise is whoever downloaded
+# the zip. Building where it runs means the smoke test below is running the real artefact.
+#
+# **No ffmpeg in any zip.** A renderer that cannot find ffmpeg is a working renderer with
+# render_video disabled; a media encoder bundled into a release is somebody else's licensing
+# problem. Cut:FfmpegPath names it and `cupricut probe` says whether it answered. The IMAGE carries
+# it, because a container whose whole job is turning HTML into MP4 and which then cannot encode one
+# is broken - that is the one stated departure from house style.
+name: Release
+
+on:
+  push:
+    tags: ['v*']
+  workflow_dispatch:
+    inputs:
+      version:
+        description: 'Version to build, without the v (e.g. 0.1.0). Produces artifacts but no release.'
+        required: true
+
+permissions:
+  contents: write
+  packages: write
+
+env:
+  # GitHub Packages will not serve even a public package anonymously, so every restore here needs
+  # the token. Without it the failure is a package-not-found that names no reason.
+  DOTNET_NOLOGO: true
+  DOTNET_CLI_TELEMETRY_OPTOUT: true
+
+jobs:
+  version:
+    name: Work out the version
+    runs-on: ubuntu-latest
+    outputs:
+      version: ${{ steps.pick.outputs.version }}
+      tagged: ${{ steps.pick.outputs.tagged }}
+    steps:
+      - id: pick
+        shell: bash
+        run: |
+          if [ "${{ github.event_name }}" = "push" ]; then
+            version="${GITHUB_REF_NAME#v}"
+            echo "tagged=true" >> "$GITHUB_OUTPUT"
+          else
+            version="${{ inputs.version }}"
+            echo "tagged=false" >> "$GITHUB_OUTPUT"
+          fi
+          # Refuse rather than publish something called v-latest or 1.2.3-oops.
+          echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
+            || { echo "::error::'$version' is not a semantic version"; exit 1; }
+          echo "version=$version" >> "$GITHUB_OUTPUT"
+          echo "Building $version"
+
+  zips:
+    name: ${{ matrix.rid }} ${{ matrix.kind }}
+    needs: version
+    runs-on: ${{ matrix.os }}
+    strategy:
+      fail-fast: false
+      matrix:
+        include:
+          - { os: windows-latest, rid: win-x64,   kind: framework-dependent, selfcontained: false }
+          - { os: windows-latest, rid: win-x64,   kind: self-contained,      selfcontained: true }
+          - { os: ubuntu-latest,  rid: linux-x64, kind: framework-dependent, selfcontained: false }
+          - { os: ubuntu-latest,  rid: linux-x64, kind: self-contained,      selfcontained: true }
+
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: actions/setup-dotnet@v4
+        with:
+          global-json-file: global.json
+
+      - name: Authenticate to GitHub Packages
+        shell: bash
+        run: |
+          dotnet nuget update source GitHub-Wixely-Packages \
+            --username "${{ github.actor }}" \
+            --password "${{ secrets.GITHUB_TOKEN }}" \
+            --store-password-in-clear-text
+
+      # Both halves go in every zip. They are one product: the server is what an agent talks to and
+      # the CLI is what a build step runs, over the same services.
+      #
+      # CupriCutSelfContained is passed as well as the switch, and it is not redundant. The CLI
+      # references the server project, and two executables where one references the other must
+      # AGREE about self-containment or the SDK refuses with NETSDK1151. Once a RuntimeIdentifier is
+      # present the referenced exe resolves to self-contained whatever the publish was told -
+      # neither the switch nor a global SelfContained property reaches across the ProjectReference.
+      # A custom property does, and CupriCut.csproj reads it.
+      - name: Publish
+        shell: bash
+        run: |
+          set -euo pipefail
+          for proj in CupriCut.csproj cli/CupriCut.Cli.csproj; do
+            dotnet publish "$proj" \
+              -c Release \
+              -r "${{ matrix.rid }}" \
+              --self-contained ${{ matrix.selfcontained }} \
+              -p:CupriCutSelfContained=${{ matrix.selfcontained }} \
+              -o publish \
+              -p:Version=${{ needs.version.outputs.version }} \
+              -p:PublishSingleFile=true \
+              -p:EnableCompressionInSingleFile=false \
+              -p:IncludeNativeLibrariesForSelfExtract=true \
+              -p:DebugType=none \
+              -p:DebugSymbols=false
+          done
+
+      # The zip is only worth shipping if the thing inside it starts. This runs the PUBLISHED
+      # binary - not `dotnet run` against the build output - so a missing native library or a
+      # content file that never got copied fails here rather than for whoever downloads it.
+      - name: Smoke test the published binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          cd publish
+          ./CupriCut.Cli${{ matrix.os == 'windows-latest' && '.exe' || '' }} fonts
+          ./CupriCut.Cli${{ matrix.os == 'windows-latest' && '.exe' || '' }} \
+            sheet --composition lower-third.html --duration 2 --count 4 --out smoke.png
+          size=$(wc -c < output/smoke.png)
+          echo "contact sheet: $size bytes"
+          test "$size" -gt 5000 || { echo "::error::the published binary rendered an implausibly small sheet"; exit 1; }
+          rm -rf output
+
+      - name: Zip
+        shell: bash
+        run: |
+          set -euo pipefail
+          name="cupricut-${{ needs.version.outputs.version }}-${{ matrix.rid }}-${{ matrix.kind }}"
+          mkdir -p dist
+          if [ "${{ runner.os }}" = "Windows" ]; then
+            powershell -NoProfile -Command "Compress-Archive -Path publish/* -DestinationPath dist/$name.zip"
+          else
+            (cd publish && zip -qr "../dist/$name.zip" .)
+          fi
+          (cd dist && sha256sum "$name.zip" > "$name.zip.sha256")
+          ls -la dist
+
+      - uses: actions/upload-artifact@v4
+        with:
+          name: cupricut-${{ matrix.rid }}-${{ matrix.kind }}
+          path: dist/*
+          if-no-files-found: error
+
+  image:
+    name: Multi-arch image
+    needs: version
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/checkout@v4
+
+      - uses: docker/setup-qemu-action@v3
+      - uses: docker/setup-buildx-action@v3
+
+      - name: Log in to ghcr
+        uses: docker/login-action@v3
+        with:
+          registry: ghcr.io
+          username: ${{ github.actor }}
+          password: ${{ secrets.GITHUB_TOKEN }}
+
+      - name: Build and push
+        uses: docker/build-push-action@v6
+        with:
+          context: .
+          platforms: linux/amd64,linux/arm64
+          # A manual run proves the image assembles; only a tag publishes one.
+          push: ${{ needs.version.outputs.tagged == 'true' }}
+          tags: |
+            ghcr.io/${{ github.repository_owner }}/cupricut:${{ needs.version.outputs.version }}
+            ghcr.io/${{ github.repository_owner }}/cupricut:latest
+          secrets: |
+            NUGET_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
+          cache-from: type=gha
+          cache-to: type=gha,mode=max
+
+  release:
+    name: Publish the release
+    needs: [version, zips, image]
+    if: needs.version.outputs.tagged == 'true'
+    runs-on: ubuntu-latest
+    steps:
+      - uses: actions/download-artifact@v4
+        with:
+          path: artifacts
+
+      - name: Publish
+        uses: softprops/action-gh-release@v2
+        with:
+          files: artifacts/**/*
+          generate_release_notes: true
+          body: |
+            ## CupriCut ${{ needs.version.outputs.version }}
+
+            Write HTML. Render video. No browser anywhere in the pipeline.
+
+            ### Which download
+
+            | | |
+            |---|---|
+            | `*-framework-dependent.zip` | Needs the .NET 10 runtime already installed. Small. |
+            | `*-self-contained.zip` | Needs nothing. Large. |
+            | `ghcr.io/${{ github.repository_owner }}/cupricut:${{ needs.version.outputs.version }}` | linux/amd64 and linux/arm64, **with ffmpeg**. |
+
+            Every zip carries both halves: `CupriCut` (the MCP server, and the studio window on a
+            desktop) and `CupriCut.Cli` (the `cupricut` command).
+
+            ### ffmpeg
+
+            **The zips do not include it.** A renderer that cannot find ffmpeg is a working renderer
+            with `render_video` disabled; bundling a media encoder into a release is somebody else's
+            licensing problem. Point `Cut:FfmpegPath` at yours and run `cupricut probe` to see what
+            it can do, or `cupricut calibrate` to find out what it can do *and* the fastest render
+            parallelism on that machine.
+
+            The container image **does** carry it, because an image whose whole job is turning HTML
+            into MP4 and which then cannot encode one is broken.

@@ -32,8 +32,32 @@ is a plain document and `t` drives it.
    thread pool; the video path never pays the PNG cost.
 5. **`probe`** — is ffmpeg there, which codecs, what does the engine report as its renderer.
 6. **The `cupricut` CLI** over the same services, same verbs.
-7. **Docker** — the one departure from house style: the image carries ffmpeg. The zips do not, and
-   `Cut:FfmpegPath` names it.
+7. **Docker and the release.** The one departure from house style: the image carries ffmpeg. The
+   zips do not, and `Cut:FfmpegPath` names it.
+
+   `release.yml` cuts four zips (win-x64 / linux-x64 x framework-dependent / self-contained) and a
+   multi-arch ghcr image on a `v*` tag. Each RID builds on its OWN runner rather than
+   cross-publishing: SkiaSharp and HarfBuzz ship native binaries per RID, and a cross-publish
+   resolves them from NuGet without ever loading one — so it succeeds, and the first person to find
+   out otherwise is whoever downloaded the zip.
+
+   **Writing this found a bug that no test could have.** The CLI references the server project, and
+   two executables where one references the other must AGREE about self-containment once a
+   `RuntimeIdentifier` is present, or the SDK refuses with NETSDK1151. `dotnet build` never hits it.
+   So the whole suite passed, on every commit, while **both the release workflow and the Dockerfile
+   were incapable of producing a binary at all** — and neither had ever been run.
+
+   Neither `--self-contained` nor a global `-p:SelfContained=` crosses a `ProjectReference`; both
+   were measured. A custom property does, so `CupriCut.csproj` reads `CupriCutSelfContained` and the
+   matrix sets one thing that both halves agree on.
+
+   CI now publishes and runs the PUBLISHED binary on both OSes, so the next thing of that shape
+   fails on the commit that causes it rather than on a release tag.
+
+   **Still not executed anywhere:** there is no git remote, so no workflow has ever run, and this
+   machine has no Docker, so the image has never been built. What IS verified is every step that
+   can be run locally — both publish shapes, the published binary rendering a real contact sheet,
+   and the Dockerfile's file list against the repository.
 
 **Done when** an agent can point a tool at an HTML file and get back a contact sheet, and a CI job
 can turn the same file into an MP4.

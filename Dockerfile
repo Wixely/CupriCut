@@ -40,6 +40,12 @@ RUN --mount=type=secret,id=NUGET_AUTH_TOKEN,required=true \
     dotnet restore cli/CupriCut.Cli.csproj -r "$rid" -p:PublishSingleFile=true -p:SelfContained=false -p:EnableCompressionInSingleFile=false
 
 COPY . .
+
+# CupriCutSelfContained is passed as well as the self-contained switch, and it is not redundant.
+# cli references CupriCut.csproj, and two executables where one references the other must AGREE
+# about self-containment or the SDK refuses with NETSDK1151. Once a RuntimeIdentifier is present
+# the referenced exe resolves to self-contained whatever the publish was told, and neither the
+# switch nor a global SelfContained property crosses the ProjectReference. A custom property does.
 RUN arch="${TARGETARCH:-amd64}"; \
     if [ "$arch" = "amd64" ]; then arch="x64"; fi; \
     rid="linux-$arch"; \
@@ -49,6 +55,7 @@ RUN arch="${TARGETARCH:-amd64}"; \
         --no-restore \
         -r "$rid" \
         --self-contained false \
+        -p:CupriCutSelfContained=false \
         -o /app/publish \
         -p:PublishSingleFile=true \
         -p:EnableCompressionInSingleFile=false \

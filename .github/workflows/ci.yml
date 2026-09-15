@@ -66,6 +66,32 @@ jobs:
           echo "contact sheet: $size bytes"
           test "$size" -gt 5000 || { echo "contact sheet is implausibly small"; exit 1; }
 
+      # Publishing is a DIFFERENT build from the one above, and it broke without a single test
+      # noticing: the CLI references the server project, and two executables where one references
+      # the other must agree about self-containment once a RuntimeIdentifier is present, or the SDK
+      # refuses with NETSDK1151. `dotnet build` never hits it, so the whole suite passed while both
+      # the release workflow and the Dockerfile could not produce a binary at all.
+      #
+      # This runs the PUBLISHED binary rather than the build output, so the next thing of that shape
+      # fails on the commit that causes it rather than on a release tag.
+      - name: Publish and run the published binary
+        shell: bash
+        run: |
+          set -euo pipefail
+          rid=$([ "${{ runner.os }}" = "Windows" ] && echo win-x64 || echo linux-x64)
+          for proj in CupriCut.csproj cli/CupriCut.Cli.csproj; do
+            dotnet publish "$proj" -c Release -r "$rid" \
+              --self-contained false -p:CupriCutSelfContained=false \
+              -o ci-publish -p:PublishSingleFile=true -p:DebugType=none -p:DebugSymbols=false
+          done
+          cd ci-publish
+          exe=$([ "${{ runner.os }}" = "Windows" ] && echo ./CupriCut.Cli.exe || echo ./CupriCut.Cli)
+          "$exe" fonts
+          "$exe" sheet --composition lower-third.html --duration 2 --count 4 --out published.png
+          size=$(wc -c < output/published.png)
+          echo "published binary rendered $size bytes"
+          test "$size" -gt 5000 || { echo "::error::the published binary rendered an implausibly small sheet"; exit 1; }
+
       - name: Upload the contact sheet
         uses: actions/upload-artifact@v4
         with:

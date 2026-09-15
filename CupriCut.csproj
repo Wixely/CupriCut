@@ -2,6 +2,14 @@
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
+
+    <!-- Two executables where one references the other must AGREE about self-containment, or the
+         SDK refuses with NETSDK1151 - and the moment a RuntimeIdentifier is present the referenced
+         exe resolves to self-contained no matter what the publish was told. Neither the
+         self-contained switch nor a global SelfContained property reaches across the
+         ProjectReference; both were measured. A custom property does flow, so the release matrix
+         sets this one thing and both halves land on the same answer. Unset, nothing changes. -->
+    <SelfContained Condition="'$(CupriCutSelfContained)' != ''">$(CupriCutSelfContained)</SelfContained>
     <RootNamespace>CupriCut</RootNamespace>
     <AssemblyName>CupriCut</AssemblyName>
     <ApplicationIcon>wmcp.ico</ApplicationIcon>

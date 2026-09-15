@@ -19,7 +19,7 @@ namespace CupriCut.Gui;
 /// <para>Three engine bugs were routed around while this was written — Wixely/CupriFace#161
 /// (<c>align-items:center</c> did nothing to an auto-width item in a column flex container), #162
 /// (percentage <c>border-radius</c> painted a square) and #163 (multi-value <c>border-radius</c>
-/// was dropped entirely). All three are <b>fixed in CupriFace 0.24.1</b>, which this depends on.
+/// was dropped entirely). All three are <b>fixed in CupriFace 0.24.1</b>.
 /// The workarounds are gone from the markup; the layout still flexes rather than using fixed
 /// columns, which was always the better shape and is unrelated to those bugs.</para>
 /// </summary>

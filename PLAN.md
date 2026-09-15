@@ -366,14 +366,40 @@ None is confirmed as a bug: each is a case where the engine differs from a brows
 first guess about the cause was wrong, so each wants an isolated reproduction before it is filed.
 The rule this repository already follows applies — measure it, then claim it.
 
+**`line-height` is a downward offset, not a line box.** Isolated on CupriFace 0.25.0, and it is one
+bug rather than the four separate mysteries this section used to list:
+
+| box | browser | engine |
+|---|---|---|
+| no `line-height` | text at the top | text at the top — correct |
+| `line-height: 120px` on a 120px box | one line, vertically centred | text drawn **entirely below the box**, outside it |
+| `line-height: 48px`, `font-size: 48px` | text at the top | text pushed down ~48px |
+
+The value is added to the text's position instead of defining a box the glyph is centred within. It
+explains every layout problem the samples hit, and the conclusions drawn from them were wrong:
+
+- Text pushed down by a line-height pushed everything after it off the frame — the title card lost
+  its last three elements this way.
+- The odometer's digits were each a full cell BELOW the window meant to show them, so the window
+  looked as though it was clipping nothing, or clipping everything. **`overflow: hidden` was never
+  broken**; the text simply was not where it was supposed to be. An odometer should work once this
+  does.
+- A box with an explicit height and a matching line-height rendered as an empty rectangle.
+
+Worth filing: it is reproducible in six lines, silently ruins vertical rhythm, and the workaround
+(never set `line-height`) is not one anybody would guess.
+
+Still open, and genuinely not understood:
+
 | what happened | what is not yet known |
 |---|---|
-| `overflow: hidden` did not clip a child carrying a `transform`, and clipped a plain oversized child to nothing | Whether the clip is computed before the transform, whether it is the nesting, or whether the descendant selector in the test never applied. An odometer (a 0–9 column sliding inside a window) is the obvious use and does not work. |
-| `position: absolute` children inside a nested positioned box landed outside their container | Isolated probes of `position:relative` + `align-items` behaved correctly, so the cause is something else in the real composition rather than the pattern itself. |
-| Setting `line-height` made text boxes much taller than the value given | Whether line-height adds to the content height rather than replacing it. The two samples that were here first set none, which is why they always rendered correctly. |
-| `align-items: center` centred correctly in isolation, but spread a flex item's children across the full height when a full-height `position:absolute` sibling shared the flex line | Whether an absolutely positioned child is still participating as a flex item. |
-| `align-self: center` and `margin: auto` do not centre a flex item | Probably simply unsupported; `align-items` on the parent does work and is the answer. |
-| `border-left` / `border-right` / `border-bottom` and `letter-spacing` are silently ignored | Reported by CupriDoctor as CF0050. Some separators in the studio window have therefore never been drawn. |
+| `align-items: center` centred correctly in isolation, but spread a flex item's children across the full height when a full-height `position:absolute` sibling shared the flex line | Whether an absolutely positioned child is still participating as a flex item. Possibly also a line-height artefact — it has not been re-tested since that was isolated. |
+| `position: absolute` children inside a nested positioned box landed outside their container | Isolated probes behaved correctly, so the cause is something else in the real composition. Same caveat. |
+| `align-self: center` and `margin: auto` do not centre a flex item | Probably simply unsupported; `align-items` on the parent works and is the answer. |
+| `letter-spacing` is silently ignored | CF0050. Still the case on 0.25.0. |
+
+~~`border-left` / `border-right` / `border-bottom` are ignored~~ — **fixed in CupriFace 0.25.0.** The
+studio's three separators, which had never been drawn, now are.
 
 ## Decided — do not re-open
 

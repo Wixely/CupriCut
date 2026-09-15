@@ -123,7 +123,7 @@ public sealed class StudioTests
                 OutputRootPath = @"C:\CupriCut\output",
                 FfmpegPath = "ffmpeg",
                 WorkersSetting = "6 (built-in guess; calibrate to measure this machine)",
-                EngineVersion = "CupriFace 0.24.1.0",
+                EngineVersion = "CupriFace 0.25.0.0",
                 RecommendedWorkers = 8,
                 ShowAllChecks = true,
                 CalibrationSummary = "1 of 19 checks failed (3109 ms).",

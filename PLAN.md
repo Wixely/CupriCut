@@ -298,12 +298,27 @@ built on, so it goes first.
 
     All seven shipped compositions lint clean, and a test keeps them that way.
 
-## Milestone 3 — interaction (2 days)
+## Milestone 3 — interaction ~~(2 days)~~ **dropped**
 
-15. **Interaction track.** `data-cut-click="1.2"`, or a JSON sidecar of `(t, action)` pairs, over
-    `DispatchClick` and the typing APIs. The engine takes input with no window, so this is something
-    a Chrome pipeline cannot do at all. Replay from zero on every seek — correct, and cheap at
-    179 fps. Caching per `t` is an optimisation for later, not now.
+15. ~~**Interaction track.**~~ **Not building this.** `data-cut-click="1.2"` over `DispatchClick`,
+    so a render could be footage of a UI being used.
+
+    It was in the plan because the engine takes input with no window and a Chrome pipeline cannot
+    do that at all — which is true, and is the wrong reason to build something. **Nobody interacts
+    with the things CupriCut actually makes.** Seven shipped compositions in, they are all broadcast
+    graphics: lower thirds, title cards, stat callouts, captions, scenes. There is nothing to click.
+
+    The capability serves a different product — "record a demo of my app" — and for that the
+    composition would have to BE the app, which is a `CupriApp` and a different tool. Chasing it
+    here would be building for a user this thing does not have.
+
+    And it is not free. A scripted click makes a composition **impure in `t`**: the state at `t=2`
+    depends on a click at `t=1.2` having happened, so every frame must be swept rather than
+    rendered directly. That is the single biggest performance property this renderer has
+    (10–45x), spent on a feature nobody here needs.
+
+    Worth revisiting only if someone actually wants to film a UI. The engine's side of it already
+    works, so the cost is CupriCut's plumbing, not research.
 
 ## Milestone 4 — cue the animation off the audio (4–5 days)
 

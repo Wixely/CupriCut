@@ -266,12 +266,37 @@ built on, so it goes first.
 
    Verified in pixels at six sample times, and by eye across a nine-second three-scene sheet where
    each late scene is caught mid-entrance.
-13. **`inspect`** — the timeline as data: tracks, windows, fonts asked for, images referenced,
-   duration.
-14. **`lint`** — the determinism verdict: platform-resolved fonts, sources that never loaded,
-    wall-clock content, and **whether the composition is pure in `t`** (no transitions, no toasts,
-    no scroll-driven easing). A pure composition can be sampled at any single `t` for 5.6 ms with no
-    sweep, and that is worth telling an author.
+13. ~~**`inspect`**~~ **Done.** The timeline as data — tracks, windows and their generated classes,
+   duration — plus the backdrop, the stylesheets and references, and every font family the
+   composition asked for with what answered it.
+14. ~~**`lint`**~~ **Done.** Three sources in one verdict: the engine's own reader (`CF*`), what only
+    CupriCut knows (`CUT*` — a machine-resolved font, a resource that never arrived, a timeline it
+    could not make sense of), and whether the composition is pure in `t`. Impurity is reported as
+    **info, not a fault**: it is correct and slower, and a verdict of "errors" for a composition
+    that renders exactly what its author meant would be a lie. `clean` / `warnings` / `errors`, and
+    the CLI exits non-zero only on errors.
+
+    Both come from one `Inspector.Examine`, because they are the same work asked two ways and
+    neither should open the document twice or disagree with the other about what it found.
+
+    **Two things made it confidently wrong before they were found**, and both are the kind of
+    mistake this tool exists to catch:
+
+    - `CupriDoctor.Check(html, null)` turns the CSS pass off ENTIRELY, inline `<style>` included —
+      which is where nearly every composition keeps its rules. Passing `""` checks the same
+      document and finds them. `SampleTests` had been running the doctor over every shipped
+      composition since it was written and had only ever read the markup. Raised as
+      [CupriFace#183](https://github.com/Wixely/CupriFace/issues/183).
+    - The doctor's viewport defaults to 1024x768, so its overflow checks reported a 1280-wide
+      composition as broken for being 1280 wide. It is asked at the composition's own frame now.
+
+    And one defect of CupriCut's own, found by pointing the new tool at the repository's own
+    samples: the reserved-animation check matched any selector CONTAINING the timed element's
+    class, so `.scene .title { animation: ... }` — the shape this feature recommends — warned on
+    every correctly written composition. Only the selector's subject is examined now. A warning
+    that is wrong is worse than no warning.
+
+    All seven shipped compositions lint clean, and a test keeps them that way.
 
 ## Milestone 3 — interaction (2 days)
 

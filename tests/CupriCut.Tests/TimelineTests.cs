@@ -101,11 +101,52 @@ public sealed class TimelineTests
         Assert.Contains("Move the motion onto a child", problem);
     }
 
+    [Theory]
+    // A DESCENDANT of the scene animating is the shape this feature recommends, and the selector
+    // contains ".scene" - warning about it would fire on every correctly-written composition.
+    [InlineData(".scene .title { animation: rise 1s linear both; }")]
+    [InlineData(".scene > .title { animation: rise 1s linear both; }")]
+    [InlineData(".title { animation: rise 1s linear both; }")]
+    // ...and a longer class name that merely starts the same way is a different class.
+    [InlineData(".scenery { animation: rise 1s linear both; }")]
+    public void An_animation_that_is_not_on_the_timed_element_is_not_reported(string css) =>
+        Assert.Empty(Timeline.Plan("""<div class="scene" data-start="1"></div>""", css).Problems);
+
+    [Theory]
+    [InlineData(".scene { animation: fade 1s linear both; }")]
+    [InlineData(".scene { animation-name: fade; }")]
+    [InlineData(".wrap .scene { animation: fade 1s linear both; }")]
+    [InlineData(".other, .scene { animation: fade 1s linear both; }")]
+    [InlineData(".scene:hover { animation: fade 1s linear both; }")]
+    public void An_animation_ON_the_timed_element_is_reported(string css) =>
+        Assert.Single(Timeline.Plan("""<div class="scene" data-start="1"></div>""", css).Problems);
+
     [Fact]
-    public void An_animation_on_a_DIFFERENT_class_is_not_reported()
+    public void An_inline_style_block_is_searched_as_well_as_a_stylesheet()
     {
-        const string Css = ".title { animation: rise 1s linear both; }";
-        Assert.Empty(Timeline.Plan("""<div class="scene" data-start="1"></div>""", Css).Problems);
+        // A plain .html composition keeps its rules in <style>, so the css argument is null for
+        // exactly the compositions most people write.
+        const string Html = """
+            <div class="scene" data-start="1"></div>
+            <style>.scene { animation: fade 1s linear both; }</style>
+            """;
+        Assert.Single(Timeline.Plan(Html, null).Problems);
+    }
+
+    [Fact]
+    public void A_time_that_will_not_parse_does_not_slide_the_rewrite()
+    {
+        // Plan skips an element whose data-start is not a number; Rewrite used to consume a window
+        // for it anyway, and the indices slid until one ran off the end of the list. The two share
+        // one decision now.
+        const string Html = """
+            <div class="a" data-start="soon"></div>
+            <div class="b" data-start="1"></div>
+            """;
+        var applied = Timeline.Apply(Composition("s.html", Html, null));
+
+        Assert.Contains("class=\"b cut-t0\"", applied.Html);
+        Assert.DoesNotContain("cut-t1", applied.Html);
     }
 
     // ---- the rewrite ----------------------------------------------------------------------------

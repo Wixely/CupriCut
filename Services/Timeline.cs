@@ -124,24 +124,12 @@ public static partial class Timeline
         {
             var attrs = tag.Groups["attrs"].Value;
 
-            double? start = null;
-            double? duration = null;
-            string? track = null;
+            if (!Timed(attrs, problems, out var start, out var duration, out var track)) continue;
 
-            foreach (Match timing in TimingAttr().Matches(attrs))
-            {
-                var value = timing.Groups["v"].Value.Trim();
-                switch (timing.Groups["which"].Value.ToLowerInvariant())
-                {
-                    case "start": start = Number(value, StartAttribute, problems); break;
-                    case "duration": duration = Number(value, DurationAttribute, problems); break;
-                    case "track": track = value.Length == 0 ? null : value; break;
-                }
-            }
-
-            if (start is null && duration is null) continue;
-
-            var classes = ClassAttr().Match(attrs) is { Success: true } c ? c.Groups["v"].Value.Trim() : null;
+            // What the AUTHOR wrote. Plan runs on the rewritten markup too - Composition.Timeline
+            // reads it back after Apply - and reporting a class CupriCut added itself would have
+            // someone hunting for a `cut-t0` they never typed.
+            var classes = Authored(ClassAttr().Match(attrs) is { Success: true } c ? c.Groups["v"].Value : null);
             var window = new TimelineWindow(
                 index++, tag.Groups["name"].Value, classes,
                 Math.Max(0, start ?? 0),
@@ -152,7 +140,9 @@ public static partial class Timeline
             // against the stylesheet text, not a cascade - it catches the case that actually
             // happens (a rule naming the element's class also setting animation) and says so, which
             // is better than the author's animation vanishing with no explanation.
-            if (DeclaresAnimation(css, classes) || DeclaresAnimation(attrs, null))
+            // The HTML as well as the stylesheet: a plain .html composition keeps its rules in an
+            // inline <style>, so css is null for exactly the compositions most people write.
+            if (DeclaresAnimation(css, classes) || DeclaresAnimation(html, classes) || DeclaresAnimation(attrs, null))
                 problems.Add(
                     $"{window.Describe()} carries its own animation, and CupriCut needs that slot for its window - " +
                     "the engine runs one animation per element. Move the motion onto a child.");
@@ -196,9 +186,12 @@ public static partial class Timeline
         var index = 0;
         return OpeningTag().Replace(html, tag =>
         {
+            // The SAME decision Plan made, from the same function. These two disagreeing is not a
+            // hypothetical: Rewrite used to ask only whether the attribute was present, so an
+            // element whose data-start would not parse was skipped by one and consumed by the
+            // other, and the indices slid until one ran off the end of the list.
             var attrs = tag.Groups["attrs"].Value;
-            if (!TimingAttr().Matches(attrs).Any(m => m.Groups["which"].Value.ToLowerInvariant() is "start" or "duration"))
-                return tag.Value;
+            if (!Timed(attrs, null, out _, out _, out _)) return tag.Value;
 
             var window = plan.Windows[index++];
             var name = tag.Groups["name"].Value;
@@ -254,19 +247,65 @@ public static partial class Timeline
         return css.ToString();
     }
 
+    /// <summary>
+    /// Whether an opening tag's attributes describe a timed element, and what they say.
+    /// </summary>
+    /// <param name="problems">Collected when given. Null while rewriting, because the same markup
+    /// is read twice and one copy of each complaint is enough.</param>
+    private static bool Timed(
+        string attrs, List<string>? problems,
+        out double? start, out double? duration, out string? track)
+    {
+        start = null;
+        duration = null;
+        track = null;
+
+        var timed = false;
+        foreach (Match timing in TimingAttr().Matches(attrs))
+        {
+            var value = timing.Groups["v"].Value.Trim();
+            switch (timing.Groups["which"].Value.ToLowerInvariant())
+            {
+                case "start":
+                    start = Number(value, StartAttribute, problems);
+                    timed |= start is not null;
+                    break;
+                case "duration":
+                    duration = Number(value, DurationAttribute, problems);
+                    timed |= duration is not null;
+                    break;
+                case "track":
+                    track = value.Length == 0 ? null : value;
+                    break;
+            }
+        }
+        return timed;
+    }
+
+    /// <summary>A class list with CupriCut's own generated classes taken back out.</summary>
+    private static string? Authored(string? classes)
+    {
+        if (string.IsNullOrWhiteSpace(classes)) return null;
+        var kept = classes
+            .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+            .Where(c => !c.StartsWith("cut-t", StringComparison.Ordinal));
+        var joined = string.Join(' ', kept);
+        return joined.Length == 0 ? null : joined;
+    }
+
     private static double Percent(double t, double total) =>
         total <= 0 ? 0 : Math.Clamp(t / total * 100, 0, 100);
 
     private static string Num(double v) =>
         Math.Round(v, 6).ToString("0.######", CultureInfo.InvariantCulture);
 
-    private static double? Number(string value, string attribute, List<string> problems)
+    private static double? Number(string value, string attribute, List<string>? problems)
     {
         if (double.TryParse(value, NumberStyles.Float, CultureInfo.InvariantCulture, out var parsed)
             && !double.IsNaN(parsed) && !double.IsInfinity(parsed))
             return parsed;
 
-        problems.Add($"{attribute}=\"{value}\" is not a number of seconds, so it was ignored.");
+        problems?.Add($"{attribute}=\"{value}\" is not a number of seconds, so it was ignored.");
         return null;
     }
 
@@ -280,13 +319,39 @@ public static partial class Timeline
         if (classes is null)
             return css.Contains("animation", StringComparison.OrdinalIgnoreCase);
 
-        foreach (var name in classes.Split(' ', StringSplitOptions.RemoveEmptyEntries))
+        var names = classes.Split(' ', StringSplitOptions.RemoveEmptyEntries);
+        foreach (Match rule in Rules().Matches(css))
         {
-            foreach (Match rule in Rules().Matches(css))
-            {
-                if (!rule.Groups["sel"].Value.Contains("." + name, StringComparison.Ordinal)) continue;
-                if (AnimationDecl().IsMatch(rule.Groups["body"].Value)) return true;
-            }
+            if (!AnimationDecl().IsMatch(rule.Groups["body"].Value)) continue;
+            if (names.Any(n => Targets(rule.Groups["sel"].Value, n))) return true;
+        }
+        return false;
+    }
+
+    /// <summary>
+    /// Whether a selector targets an element carrying this class ITSELF, rather than one of its
+    /// descendants.
+    ///
+    /// <para>Containment is not enough, and the difference is not academic: a scene whose children
+    /// animate is the shape this feature recommends, and <c>.scene .title { animation: ... }</c>
+    /// contains ".scene" while targeting something else entirely. Warning about that would fire on
+    /// every correctly-written composition, and a warning that is wrong is worse than no warning.</para>
+    ///
+    /// <para>Only the SUBJECT is examined - the last compound of each comma-separated part, after
+    /// the final descendant or child combinator.</para>
+    /// </summary>
+    private static bool Targets(string selector, string name)
+    {
+        foreach (var part in selector.Split(','))
+        {
+            var subject = part.Replace('>', ' ').Replace('+', ' ').Replace('~', ' ')
+                .Split(' ', StringSplitOptions.RemoveEmptyEntries)
+                .LastOrDefault();
+            if (subject is null) continue;
+
+            // Split the compound into its simple selectors so ".scene" does not match ".scenery".
+            foreach (var simple in subject.Split('.', StringSplitOptions.RemoveEmptyEntries))
+                if (simple.TrimEnd(':', ' ').Split(':')[0] == name) return true;
         }
         return false;
     }

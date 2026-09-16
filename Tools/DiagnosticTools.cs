@@ -68,6 +68,126 @@ public static class DiagnosticTools
         }, JsonOpts.Default);
     }
 
+    [McpServerTool(Name = "inspect"),
+     Description("""
+        What a composition IS: its timeline, its assets, the fonts it asks for and what answered.
+
+        The timeline is the interesting half - every element carrying data-start / data-duration,
+        when it is on screen, and which data-track it belongs to. Read this before changing timing,
+        because it is the only way to see the whole sequence without rendering it.
+
+        The composition is opened and rendered once to answer, because a layout is what asks for a
+        font family - nothing resolves until something paints. Use lint for the verdict on whether
+        it will render the same on another machine.
+        """)]
+    public static string Inspect(
+        CupriCutService cut,
+        [Description("Composition to look at: an HTML file or a .cut.json project, relative to a configured root.")] string composition)
+    {
+        var x = Inspector.Examine(cut, composition);
+
+        return JsonSerializer.Serialize(new
+        {
+            composition = x.Composition,
+            size = $"{x.Width}x{x.Height}",
+            x.Fps,
+            duration = x.Duration > 0 ? Math.Round(x.Duration, 6) : (double?)null,
+            pureInTime = x.Purity.PureInTime,
+            purity = x.Purity.Summary,
+
+            // Null rather than an empty object when the composition has no timeline - most do not,
+            // and a block saying so on every answer is noise.
+            timeline = x.Timeline.Any ? new
+            {
+                duration = Math.Round(x.Timeline.Duration, 6),
+                tracks = x.Timeline.Tracks,
+                windows = x.Timeline.Windows.Select(w => new
+                {
+                    w.Index,
+                    element = w.Describe(),
+                    start = Math.Round(w.Start, 6),
+                    end = double.IsPositiveInfinity(w.End) ? (double?)null : Math.Round(w.End, 6),
+                    w.Track,
+                    generatedClass = w.ClassName,
+                }),
+                problems = x.Timeline.Problems.Count == 0 ? null : x.Timeline.Problems,
+            } : null,
+
+            backdrop = x.Backdrops.Count == 0 ? null : new
+            {
+                marked = x.Backdrops.Count,
+                elements = x.Backdrops.Select(b => b.Describe()),
+            },
+
+            assets = new
+            {
+                stylesheets = x.Stylesheets.Count == 0 ? null : x.Stylesheets,
+                references = x.References.Count == 0 ? null : x.References,
+            },
+
+            fonts = new
+            {
+                registered = x.RegisteredFamilies,
+                asked = x.Fonts.Select(f => new
+                {
+                    f.Asked,
+                    f.Weight,
+                    f.Slant,
+                    f.Answered,
+                    f.Source,
+                    f.MachineDependent,
+                }),
+            },
+
+            settled = x.Settled,
+            pendingLoads = x.PendingLoads == 0 ? (int?)null : x.PendingLoads,
+        }, JsonOpts.Default);
+    }
+
+    [McpServerTool(Name = "lint"),
+     Description("""
+        Will this composition render the same on another machine, and does it render what its
+        author meant?
+
+        Three sources in one answer. The engine's own reader (CF* codes) catches the silent things -
+        a tag that never closed, a component nothing registered, a CSS property it ignored, an
+        element that laid out with no area while holding content. CupriCut adds what only it knows
+        (CUT* codes): a font answered by the MACHINE rather than by a registered file, a resource
+        that never arrived, a timeline it could not make sense of. And it reports whether the
+        composition is pure in t - not a fault, but the difference between sampling any frame
+        directly and sweeping every frame before it.
+
+        verdict is "clean", "warnings" or "errors", which is what a CI step gates on.
+        """)]
+    public static string Lint(
+        CupriCutService cut,
+        [Description("Composition to check: an HTML file or a .cut.json project, relative to a configured root.")] string composition,
+        [Description("Include the informational findings. Off by default, so the answer is what needs attention.")] bool all = false)
+    {
+        var x = Inspector.Examine(cut, composition);
+        var shown = all ? x.Findings : [.. x.Findings.Where(f => f.Level != FindingLevel.Info)];
+
+        return JsonSerializer.Serialize(new
+        {
+            composition = x.Composition,
+            x.Verdict,
+            x.Errors,
+            x.Warnings,
+            pureInTime = x.Purity.PureInTime,
+            findings = shown.Select(f => new
+            {
+                level = f.Level.ToString().ToLowerInvariant(),
+                f.Code,
+                what = f.What,
+                f.Fix,
+                line = f.Line == 0 ? (int?)null : f.Line,
+            }),
+            note = all || x.Findings.Count == shown.Count
+                ? null
+                : $"{x.Findings.Count - shown.Count} informational finding(s) hidden. Pass all:true for them.",
+        }, JsonOpts.Default);
+    }
+
     [McpServerTool(Name = "list_fonts"),
      Description("""
         List the font families registered on this server, and - given a composition - what every

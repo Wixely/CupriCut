@@ -27,7 +27,7 @@ public sealed class DoctorTests(ITestOutputHelper output)
         var model = Populated();
         var app = new StudioApp(model);
 
-        var report = CupriDoctor.Check(app.Html, app.Css, app.Components, model: app.Model);
+        var report = CupriDoctor.Check(app.Html, app.Css ?? string.Empty, app.Components, model: app.Model);
         output.WriteLine(report.ToString());
 
         Assert.False(report.HasErrors, report.ToString());
@@ -39,7 +39,7 @@ public sealed class DoctorTests(ITestOutputHelper output)
         // CF0021 on its own, named, so a regression reads as what it is rather than as "the markup
         // got worse". A control that can never open is invisible in a screenshot.
         var app = new StudioApp(Populated());
-        var report = CupriDoctor.Check(app.Html, app.Css, app.Components, model: app.Model);
+        var report = CupriDoctor.Check(app.Html, app.Css ?? string.Empty, app.Components, model: app.Model);
 
         var inert = report.Findings.Where(f => f.Code == "CF0021").ToList();
         Assert.True(inert.Count == 0,

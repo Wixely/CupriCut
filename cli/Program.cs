@@ -39,6 +39,8 @@ public static class Program
                 "export" => Export(cut, encoder, opts),
                 "formats" => Formats(),
                 "probe" => Probe(cut, encoder),
+                "inspect" => Inspect(cut, opts),
+                "lint" => Lint(cut, opts),
                 "calibrate" => Calibrate(cut, encoder, opts),
                 "fonts" => Fonts(cut, opts),
                 "projects" => Projects(cut),
@@ -177,6 +179,80 @@ public static class Program
         ReportTiming(plan);
         Report(report);
         return 0;
+    }
+
+    /// <summary>What a composition is, as a table rather than as JSON.</summary>
+    private static int Inspect(CupriCutService cut, CommandLine opts)
+    {
+        var x = Inspector.Examine(cut, opts.Require("composition"));
+
+        Console.WriteLine($"{Path.GetFileName(x.Composition)}  {x.Width}x{x.Height} at {x.Fps:0.##} fps" +
+                          (x.Duration > 0 ? $", {x.Duration:0.###}s" : ""));
+        Console.WriteLine(x.Purity.PureInTime
+            ? "  pure in t - any frame renders directly"
+            : $"  NOT pure in t - {x.Purity.Summary}");
+
+        if (x.Timeline.Any)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"TIMELINE  {x.Timeline.Duration:0.###}s" +
+                              (x.Timeline.Tracks.Count > 0 ? $", tracks: {string.Join(", ", x.Timeline.Tracks)}" : ""));
+            foreach (var w in x.Timeline.Windows)
+            {
+                var end = double.IsPositiveInfinity(w.End) ? "end" : $"{w.End:0.###}s";
+                Console.WriteLine($"  {w.Start,8:0.###}s -> {end,-9}  {w.Describe()}");
+            }
+        }
+
+        if (x.Backdrops.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("BACKDROP");
+            foreach (var b in x.Backdrops) Console.WriteLine($"  {b.Describe()}");
+        }
+
+        if (x.References.Count > 0)
+        {
+            Console.WriteLine();
+            Console.WriteLine("REFERENCES");
+            foreach (var r in x.References) Console.WriteLine($"  {r}");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("FONTS");
+        foreach (var f in x.Fonts)
+            Console.WriteLine($"  {(f.MachineDependent ? "!" : " ")} {f.Asked,-20} {f.Weight,4}  -> {f.Answered ?? "(nothing)"} ({f.Source})");
+        if (x.Fonts.Count == 0) Console.WriteLine("  (none asked for)");
+
+        return 0;
+    }
+
+    /// <summary>The determinism verdict. Non-zero on errors, so a CI step can gate on it.</summary>
+    private static int Lint(CupriCutService cut, CommandLine opts)
+    {
+        var x = Inspector.Examine(cut, opts.Require("composition"));
+        var all = opts.Has("all");
+        var shown = all ? x.Findings : [.. x.Findings.Where(f => f.Level != FindingLevel.Info)];
+
+        foreach (var f in shown)
+        {
+            var where = f.Line > 0 ? $" (line {f.Line})" : "";
+            Console.WriteLine($"{f.Level.ToString().ToLowerInvariant(),-7} {f.Code}{where}: {f.What}");
+            if (f.Fix is { Length: > 0 }) Console.WriteLine($"        -> {f.Fix}");
+        }
+
+        var hidden = x.Findings.Count - shown.Count;
+        Console.WriteLine();
+        Console.WriteLine(x.Verdict switch
+        {
+            "clean" => $"{Path.GetFileName(x.Composition)}: clean.",
+            "warnings" => $"{Path.GetFileName(x.Composition)}: {x.Warnings} warning(s).",
+            _ => $"{Path.GetFileName(x.Composition)}: {x.Errors} error(s), {x.Warnings} warning(s).",
+        });
+        if (hidden > 0 && !all) Console.WriteLine($"  {hidden} informational finding(s) hidden. Pass --all for them.");
+
+        // Non-zero only on errors: a warning is a thing to know, not a thing to stop a build.
+        return x.Errors > 0 ? 5 : 0;
     }
 
     private static int Formats()
@@ -462,6 +538,8 @@ public static class Program
           cupricut export --composition <file> --formats mp4,mask,gif [--duration 3] [--alpha]
                                                [--fps 30] [--out <dir>]
           cupricut formats
+          cupricut inspect --composition <file>
+          cupricut lint    --composition <file> [--all]
           cupricut probe
           cupricut calibrate [--all] [--no-benchmark] [--apply]
           cupricut fonts  [--composition <file>]

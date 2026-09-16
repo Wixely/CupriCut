@@ -85,7 +85,11 @@ public sealed class SampleTests
         // The engine's own reader. It catches the silent things - a tag that never closes, a
         // component nothing registered, a box that laid out with no area while holding content.
         var html = File.ReadAllText(Path.Combine(RepoRoot(), "compositions", name));
-        var report = CupriFace.Diagnostics.CupriDoctor.Check(html, null);
+        // "" and not null: null turns the CSS checks off, inline <style> included, so this test
+        // was only ever reading the markup. See CupriFace#183.
+        // At the frame these are authored for. The doctor defaults to 1024x768, and its overflow
+        // checks would then report a 1280-wide composition as broken for being 1280 wide.
+        var report = CupriFace.Diagnostics.CupriDoctor.Check(html, string.Empty, width: 1280, height: 720);
 
         Assert.False(report.HasErrors, $"{name}:\n{report}");
     }

@@ -92,13 +92,14 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `render_video` | raw RGBA into ffmpeg; `alpha` gives a transparent clear, embedded or as a matte | **in** |
 | `export` | a LIST of outcomes — mp4, h265, webm, mov, gif, frames, mask, matte — all from one sweep | **in** |
 | `list_formats` | what each format gives you, for choosing between them | **in** |
+| `inspect` | the timeline as data — tracks, windows, assets, and every font asked for | **in** |
+| `lint` | will it render the same somewhere else, and does it render what you meant | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
 | `calibrate` | what this ffmpeg can really do, and the fastest render parallelism | **in** |
 | `save_project` / `load_project` / `update_project` / `list_projects` / `attach_asset` | the work, in a file a later run can reopen | **in** |
 | `move_project` / `create_folder` | projects in folders, which is the difference between three projects and thirty | **in** |
-| `inspect` | the timeline: tracks, elements and their windows, images referenced, duration | Milestone 2 |
-| `lint` | the determinism verdict, and whether the composition is pure in `t` | Milestone 2 |
+
 
 Compositions are plain HTML + CSS in the engine's documented subset. Timeline attributes —
 `data-start`, `data-duration`, `data-track`, borrowed from hyperframes on purpose so the agents and
@@ -221,6 +222,28 @@ list_annotations(project: "review")
 resolve_annotation(project: "review", id: "ad54d3d2",
                    resolution: "moved the logo keyframe from 1.2s to 0.6s")
 ```
+
+### Will it render the same somewhere else?
+
+```
+$ cupricut lint --composition promo.html
+error   CF0030 (line 1): <img> is not something the engine draws - it lays out, and then stays empty.
+        -> Use <cupri-image src="..."> - the engine has no raw <img> primitive.
+warning CUT001: 'Helvetica Neue' was answered by Arial (System), not by a registered file.
+        -> Put the face in a Cut:FontDirectories folder, or name a family that is registered.
+
+promo.html: 1 error(s), 1 warning(s).
+```
+
+Three sources in one verdict. The engine's own reader (`CF*`) catches the silent things - a tag that
+never closed, a component nothing registered, a CSS property it ignored. CupriCut adds what only it
+knows (`CUT*`): a font answered by the **machine** rather than by a registered file, a resource that
+never arrived, a timeline it could not make sense of. Being impure in `t` is reported as **info, not
+a fault** - it is correct and slower, and calling it an error would be a lie. The CLI exits non-zero
+only on errors, which is what a CI step gates on.
+
+`cupricut inspect` is the same look asked the other way: the timeline as data, plus the assets and
+every font family the composition asked for and what answered it.
 
 ### A composition can be a sequence
 

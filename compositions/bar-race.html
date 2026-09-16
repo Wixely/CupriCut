@@ -1,0 +1,175 @@
+<!--
+  A ranked bar chart that fills, with the leader changing hands.
+
+  What this one is for: DATA THAT MOVES. The staggered bars in revenue-card.html grow once and stop;
+  these grow, get overtaken, and settle - which is the shape of nearly every social data video ever
+  posted. Each row is one bar and one figure, and the whole thing is @keyframes, so it is pure in t
+  and renders directly.
+
+  The overtake is the interesting part and it is done with keyframe percentages rather than delays.
+  A bar that must pause, surge and settle needs three shapes in one animation; splitting that across
+  animation-delay would need two animations on one element, which the engine does not do.
+
+  Useful as it stands: quarterly numbers, a poll, a league table, downloads by week. The bars are
+  percentages of the track, so swapping the figures is a text edit and one width per row.
+-->
+<div class="stage">
+  <div --cupricut-background class="backdrop"></div>
+
+  <div class="panel">
+    <div class="eyebrow">DOWNLOADS BY WEEK</div>
+    <div class="title">Nobody opened a browser</div>
+
+    <div class="row">
+      <div class="label">CupriCut</div>
+      <div class="track"><div class="bar b1"></div></div>
+      <div class="value v1">48.2k</div>
+    </div>
+    <div class="row">
+      <div class="label">Headless Chrome</div>
+      <div class="track"><div class="bar b2"></div></div>
+      <div class="value v2">31.7k</div>
+    </div>
+    <div class="row">
+      <div class="label">After Effects</div>
+      <div class="track"><div class="bar b3"></div></div>
+      <div class="value v3">22.4k</div>
+    </div>
+    <div class="row">
+      <div class="label">Render farm</div>
+      <div class="track"><div class="bar b4"></div></div>
+      <div class="value v4">9.1k</div>
+    </div>
+  </div>
+</div>
+
+<style>
+  :root {
+    --bg-top: #0b0e14;
+    --bg-bottom: #151d2c;
+    --ink: #f4f6fb;
+    --muted: #8d9ab3;
+    --accent: #d9642a;
+    --rival: #3f6fd8;
+    --track: #1c2333;
+    --font: "Noto Sans";
+  }
+
+  .stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    font-family: var(--font);
+  }
+
+  .backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(160deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+  }
+
+  .panel {
+    margin-top: 112px;
+    width: 940px;
+  }
+
+  .eyebrow {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    animation: rise 0.5s ease-out both;
+  }
+
+  .title {
+    font-size: 44px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-top: 6px;
+    animation: rise 0.6s ease-out 0.08s both;
+  }
+
+  .row {
+    display: flex;
+    align-items: center;
+    margin-top: 26px;
+  }
+
+  .label {
+    width: 220px;
+    font-size: 19px;
+    color: var(--muted);
+  }
+
+  .track {
+    width: 560px;
+    height: 34px;
+    border-radius: 6px;
+    background: var(--track);
+  }
+
+  .bar {
+    width: 0;
+    height: 34px;
+    border-radius: 6px;
+    background: var(--accent);
+  }
+
+  .value {
+    width: 110px;
+    font-size: 21px;
+    font-weight: 700;
+    color: var(--ink);
+    margin-left: 22px;
+  }
+
+  /* Row one is behind for the first two seconds, then surges past. Three shapes in one animation,
+     because two animations on one element do nothing here.
+
+     NOTE the comments below sit OUTSIDE the @keyframes blocks. A comment INSIDE one silently
+     corrupts the stop percentages - two of them turned a bar that should finish at 545px into one
+     that finished at 714px, overrunning its own track. Nothing warned. See CupriFace#184, and
+     `cupricut lint`, which now refuses to let this happen quietly again. */
+  .b1 { animation: overtake 3.6s ease-out 0.35s both; }
+  .b2 { animation: leadThenHold 3.6s ease-out 0.35s both; background: var(--rival); }
+  .b3 { animation: grow 3.2s ease-out 0.5s both; }
+  .b4 { animation: growSmall 3.2s ease-out 0.62s both; }
+
+  .v1 { animation: fade 0.5s ease-out 2.6s both; }
+  .v2 { animation: fade 0.5s ease-out 2.0s both; }
+  .v3 { animation: fade 0.5s ease-out 2.2s both; }
+  .v4 { animation: fade 0.5s ease-out 2.4s both; }
+
+  /* behind until 35%, a pause to 60%, then the surge. */
+  @keyframes overtake {
+    0%   { width: 0; }
+    35%  { width: 250px; }
+    60%  { width: 300px; }
+    100% { width: 545px; }
+  }
+
+  /* ahead early, then overhauled. */
+  @keyframes leadThenHold {
+    0%   { width: 0; }
+    35%  { width: 330px; }
+    60%  { width: 355px; }
+    100% { width: 372px; }
+  }
+
+  @keyframes grow      { from { width: 0; } to { width: 263px; } }
+  @keyframes growSmall { from { width: 0; } to { width: 107px; } }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(26px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fade {
+    from { opacity: 0; }
+    to   { opacity: 1; }
+  }
+</style>

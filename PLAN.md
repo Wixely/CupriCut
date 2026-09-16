@@ -296,7 +296,23 @@ built on, so it goes first.
     every correctly written composition. Only the selector's subject is examined now. A warning
     that is wrong is worse than no warning.
 
-    All seven shipped compositions lint clean, and a test keeps them that way.
+    All ten shipped compositions lint clean, and a test keeps them that way.
+
+    A third engine defect came out of pointing it at them, and this one is not a lint rule -
+    nothing CupriCut can check would catch it. **The engine keeps ONE diagnostics sink for the
+    whole process.** `CupriDoctor.Check` drains whatever is in it, so it returns findings produced
+    by other documents on other threads. Measured: 400 interleaved checks of two documents moved
+    62 of 200 warnings onto the wrong one and lost 110 of 200 outright (never duplicated - the
+    finding moves rather than being copied), and a thread doing nothing but RENDERING a noisy
+    document, never calling the doctor at all, polluted **157 of 200** checks of a clean one.
+    Sequentially, both are perfect.
+
+    It surfaced as `bar-race.html` failing its own lint-clean test for a `letter-spacing` it does
+    not contain, and passing whenever it was run alone. `Services/Doctor` serialises CupriCut's own
+    checks, which fixes the first case; nothing fixes the second from outside, because the studio
+    holds a document open for as long as a preview is on screen and a lock covering renders would
+    block `lint` indefinitely. The test assembly runs one class at a time until this is fixed.
+    Raised as [CupriFace#185](https://github.com/Wixely/CupriFace/issues/185).
 
 ## Milestone 3 — interaction ~~(2 days)~~ **dropped**
 
@@ -305,8 +321,9 @@ built on, so it goes first.
 
     It was in the plan because the engine takes input with no window and a Chrome pipeline cannot
     do that at all — which is true, and is the wrong reason to build something. **Nobody interacts
-    with the things CupriCut actually makes.** Seven shipped compositions in, they are all broadcast
-    graphics: lower thirds, title cards, stat callouts, captions, scenes. There is nothing to click.
+    with the things CupriCut actually makes.** Ten shipped compositions in, they are all broadcast
+    graphics: lower thirds, title cards, stat callouts, captions, scenes, countdowns, fixture
+    cards. There is nothing to click.
 
     The capability serves a different product — "record a demo of my app" — and for that the
     composition would have to BE the app, which is a `CupriApp` and a different tool. Chasing it

@@ -72,7 +72,7 @@ public sealed record FontUse(string Asked, int Weight, string Slant, string? Ans
 /// until settling has been given its chance. Reading the markup alone would report an empty font
 /// table and call it deterministic.</para>
 /// </summary>
-public static class Inspector
+public static partial class Inspector
 {
     /// <summary>A family the engine resolved from the machine rather than from a registered file.</summary>
     public const string MachineFont = "CUT001";
@@ -88,6 +88,9 @@ public static class Inspector
 
     /// <summary>A font the composition asked for that nothing could answer.</summary>
     public const string MissingFont = "CUT005";
+
+    /// <summary>A CSS comment inside a <c>@keyframes</c> block, which corrupts its stops.</summary>
+    public const string CommentInKeyframes = "CUT006";
 
     public static Examination Examine(CupriCutService cut, string path)
     {
@@ -126,6 +129,21 @@ public static class Inspector
             report.RegisteredFamilies, fonts, settled, doc.PendingLoads, purity, findings);
     }
 
+    /// <summary>The names of any <c>@keyframes</c> blocks containing a CSS comment.</summary>
+    private static IEnumerable<string> CommentedKeyframes(string? css)
+    {
+        if (string.IsNullOrWhiteSpace(css)) yield break;
+
+        foreach (System.Text.RegularExpressions.Match m in KeyframesBlock().Matches(css))
+            if (m.Groups["body"].Value.Contains("/*", StringComparison.Ordinal))
+                yield return m.Groups["name"].Value;
+    }
+
+    // The block runs to the brace that closes it, which is one level deeper than the stops.
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"@keyframes\s+(?<name>[A-Za-z_-][\w-]*)\s*\{(?<body>(?:[^{}]|\{[^{}]*\})*)\}")]
+    private static partial System.Text.RegularExpressions.Regex KeyframesBlock();
+
     private static List<Finding> Collect(
         Composition loaded, TimelinePlan timeline, IReadOnlyList<string> fontProblems,
         IReadOnlyList<FontUse> fonts, bool settled, int pending,
@@ -143,8 +161,7 @@ public static class Inspector
         // At the composition's OWN frame, not the doctor's 1024x768 default. The overflow checks
         // are about content running past the viewport, so asking about the wrong viewport reports a
         // 1280-wide composition as broken for being 1280 wide.
-        foreach (var f in CupriDoctor.Check(loaded.Html, loaded.Css ?? string.Empty,
-                     width: width, height: height).Findings)
+        foreach (var f in Doctor.Check(loaded.Html, loaded.Css ?? string.Empty, width, height))
         {
             findings.Add(new Finding(
                 f.Severity switch
@@ -175,6 +192,15 @@ public static class Inspector
 
         foreach (var problem in timeline.Problems)
             findings.Add(new Finding(FindingLevel.Warning, TimelineProblem, problem));
+
+        // A comment between the stops of a @keyframes block silently changes the animation's
+        // values - two of them moved a bar's final width from 545px to 714px, and nothing anywhere
+        // said so. CupriFace#184. Until that is fixed this is the only thing that will catch it,
+        // and it is worth a warning precisely because commenting your keyframes is normal practice.
+        foreach (var name in CommentedKeyframes(loaded.Html).Concat(CommentedKeyframes(loaded.Css)))
+            findings.Add(new Finding(FindingLevel.Warning, CommentInKeyframes,
+                $"@keyframes {name} has a CSS comment between its stops, which corrupts their offsets.",
+                "Move the comment above the @keyframes block. The animation will otherwise play to values you did not write, with no other sign."));
 
         purity = Purity.Analyse(loaded);
         if (!purity.PureInTime)

@@ -89,9 +89,11 @@ public sealed class SampleTests
         // was only ever reading the markup. See CupriFace#183.
         // At the frame these are authored for. The doctor defaults to 1024x768, and its overflow
         // checks would then report a 1280-wide composition as broken for being 1280 wide.
-        var report = CupriFace.Diagnostics.CupriDoctor.Check(html, string.Empty, width: 1280, height: 720);
+        var findings = CupriCut.Services.Doctor.Check(html, string.Empty, width: 1280, height: 720);
 
-        Assert.False(report.HasErrors, $"{name}:\n{report}");
+        var errors = findings.Where(f => f.Severity == CupriFace.Diagnostics.Severity.Error).ToList();
+        Assert.True(errors.Count == 0,
+            $"{name}:\n" + string.Join("\n", errors.Select(f => $"  {f.Code}: {f.Message}")));
     }
 
     private static string RepoRoot()

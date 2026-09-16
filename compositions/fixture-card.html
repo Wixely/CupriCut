@@ -1,0 +1,290 @@
+<!--
+  A sports fixture with a price that shortens. Two scenes, twelve seconds.
+
+  What this one is for: A COMPOSITION THAT IS REALLY A TEMPLATE. Everything else here is one
+  picture; this is the shape you actually ship - a card whose text and figures are the only thing
+  that changes between a hundred renders of it. Saved as a .cut.json and re-rendered per fixture,
+  the markup never moves.
+
+  It uses the timeline for its two scenes: the fixture builds, then the price move lands. Scene two
+  appears at 6s, so its children start on `var(--cut-start)` rather than at the absolute zero they
+  would otherwise measure from.
+
+  The price move is a strike-through and a new figure rather than a number ticking down, because a
+  ticking number needs the data to change over time and CSS cannot do that. That is the honest
+  version and it is also how broadcast does it - a price that visibly WAS something and now is not
+  reads better than one that blurs through the middle.
+-->
+<div class="stage">
+  <div --cupricut-background class="backdrop"></div>
+
+  <!-- Scene one: the fixture. -->
+  <div class="scene" data-start="0" data-duration="6" data-track="card">
+    <div class="card">
+      <div class="meta">
+        <div class="comp">PREMIER LEAGUE</div>
+        <div class="kick">SAT 15:00</div>
+      </div>
+
+      <div class="teams">
+        <div class="team">
+          <div class="crest home"></div>
+          <div class="name">Arsenal</div>
+        </div>
+        <div class="v">v</div>
+        <div class="team">
+          <div class="crest away"></div>
+          <div class="name">Liverpool</div>
+        </div>
+      </div>
+
+      <div class="prices">
+        <div class="price p1"><div class="pl">HOME</div><div class="pv">11/8</div></div>
+        <div class="price p2"><div class="pl">DRAW</div><div class="pv">12/5</div></div>
+        <div class="price p3"><div class="pl">AWAY</div><div class="pv">2/1</div></div>
+      </div>
+    </div>
+  </div>
+
+  <!-- Scene two: the move. -->
+  <div class="scene" data-start="6" data-duration="6" data-track="card">
+    <div class="card">
+      <div class="meta">
+        <div class="comp move">PRICE BOOST</div>
+        <div class="kick move">ARSENAL TO WIN</div>
+      </div>
+
+      <div class="boost">
+        <div class="was">11/8</div>
+        <div class="strike"></div>
+        <div class="now">15/8</div>
+      </div>
+
+      <div class="rule"></div>
+      <div class="small">Boosted price available until kick-off</div>
+    </div>
+  </div>
+</div>
+
+<style>
+  :root {
+    --bg-top: #0a0d13;
+    --bg-bottom: #131b28;
+    --card: #161e2c;
+    --ink: #f4f6fb;
+    --muted: #8593ab;
+    --accent: #d9642a;
+    --home: #d81e2a;
+    --away: #16a34a;
+    --font: "Noto Sans";
+  }
+
+  .stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    font-family: var(--font);
+  }
+
+  .backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(158deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+  }
+
+  /* The scenes overlay. Neither carries an animation of its own - that slot is the timeline's. */
+  .scene {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  .card {
+    position: absolute;
+    left: 190px;
+    top: 118px;
+    width: 900px;
+    height: 430px;
+    padding: 42px 48px;
+    border-radius: 20px;
+    background: var(--card);
+    animation: lift 0.6s ease-out var(--cut-start) both;
+  }
+
+  .meta { display: flex; align-items: center; }
+
+  .comp {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+    width: 620px;
+  }
+
+  .kick {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  /* ---- scene one ------------------------------------------------------------------------- */
+
+  .teams {
+    display: flex;
+    align-items: center;
+    margin-top: 44px;
+  }
+
+  .team { display: flex; align-items: center; width: 372px; }
+
+  .crest {
+    width: 62px;
+    height: 62px;
+    border-radius: 31px;
+    margin-right: 20px;
+  }
+
+  .crest.home { background: var(--home); }
+  .crest.away { background: var(--away); }
+
+  .name {
+    font-size: 38px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .v {
+    width: 56px;
+    text-align: center;
+    font-size: 22px;
+    color: var(--muted);
+  }
+
+  .prices { display: flex; margin-top: 52px; }
+
+  .price {
+    width: 252px;
+    height: 116px;
+    margin-right: 25px;
+    padding: 20px 0 0 0;
+    border-radius: 12px;
+    background: #1e2839;
+    text-align: center;
+  }
+
+  .pl { font-size: 14px; font-weight: 700; color: var(--muted); }
+  .pv { font-size: 46px; font-weight: 700; color: var(--ink); margin-top: 10px; }
+
+  .p1 { animation: rise 0.55s ease-out 0.55s both; }
+  .p2 { animation: rise 0.55s ease-out 0.68s both; }
+  .p3 { animation: rise 0.55s ease-out 0.81s both; }
+
+  /* ---- scene two ------------------------------------------------------------------------- */
+
+  /* Scene two appears at 6s, so everything in it starts on its scene's clock rather than the
+     film's. The stagger lives in the keyframe percentages, because calc() does not work here. */
+  .move   { animation: fade 0.5s ease-out var(--cut-start) both; }
+
+  .boost  { position: relative; margin-top: 56px; height: 150px; }
+
+  .was {
+    position: absolute;
+    left: 0;
+    top: 34px;
+    font-size: 78px;
+    font-weight: 700;
+    color: var(--muted);
+    animation: fadeLate 1.4s ease-out var(--cut-start) both;
+  }
+
+  /* Drawn across the old price rather than a text-decoration, which the engine does not paint. */
+  .strike {
+    position: absolute;
+    left: 0;
+    top: 84px;
+    height: 6px;
+    width: 0;
+    border-radius: 3px;
+    background: var(--home);
+    animation: strike 1.8s ease-out var(--cut-start) both;
+  }
+
+  .now {
+    position: absolute;
+    left: 300px;
+    top: 14px;
+    font-size: 118px;
+    font-weight: 700;
+    color: var(--accent);
+    animation: land 2.4s ease-out var(--cut-start) both;
+  }
+
+  .rule {
+    height: 5px;
+    width: 0;
+    margin-top: 18px;
+    border-radius: 3px;
+    background: var(--accent);
+    animation: sweepLate 2.8s ease-out var(--cut-start) both;
+  }
+
+  .small {
+    font-size: 19px;
+    color: var(--muted);
+    margin-top: 22px;
+    animation: fadeLate2 3.2s ease-out var(--cut-start) both;
+  }
+
+  /* ---- motion ---------------------------------------------------------------------------- */
+
+  @keyframes lift {
+    from { opacity: 0; transform: translateY(26px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(28px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes fade { from { opacity: 0; } to { opacity: 1; } }
+
+  /* The hold at the front is the stagger. */
+  @keyframes fadeLate {
+    0%   { opacity: 0; }
+    20%  { opacity: 0; }
+    55%  { opacity: 1; }
+    100% { opacity: 1; }
+  }
+
+  @keyframes fadeLate2 {
+    0%   { opacity: 0; transform: translateY(16px); }
+    72%  { opacity: 0; transform: translateY(16px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes strike {
+    0%   { width: 0; }
+    42%  { width: 0; }
+    78%  { width: 172px; }
+    100% { width: 172px; }
+  }
+
+  @keyframes land {
+    0%   { opacity: 0; transform: translateY(40px); }
+    58%  { opacity: 0; transform: translateY(40px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes sweepLate {
+    0%   { width: 0; }
+    64%  { width: 0; }
+    100% { width: 420px; }
+  }
+</style>

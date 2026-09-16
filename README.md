@@ -169,7 +169,7 @@ cupricut projects
 
 ### The compositions that ship
 
-Seven of them, in `compositions/`. Each is a working starting point and each exists to show one thing:
+Ten of them, in `compositions/`. Each is a working starting point and each exists to show one thing:
 
 | | what it is for |
 |---|---|
@@ -180,6 +180,9 @@ Seven of them, in `compositions/`. Each is a working starting point and each exi
 | `caption-strip.html` | **The keying workflow**, end to end — a small overlay with nothing behind it, and a review backdrop that the export drops automatically. |
 | `scenes.html` | **The timeline.** Three scenes over nine seconds — `data-start`, `data-duration`, and a late scene giving its children their own zero. |
 | `timebase.html` | The frame-accuracy proof: a clock that reads its own frame number, for checking 1200 frames really are 10.000 seconds. |
+| `countdown.html` | **A counting clock with no clock.** Ten seconds, eleven divs, no logic: each number is on screen for exactly one second because `data-start` says so. Frame-exact in a way a scripted timer is not. |
+| `bar-race.html` | **Data that moves.** Four ranked bars with the lead changing hands - the overtake is three shapes in one `@keyframes`, because one element gets one animation. |
+| `fixture-card.html` | **A composition that is really a template.** Two timeline scenes and a price that shortens; the markup never moves, only the text and the figures. The shape you actually ship. |
 
 Every one is pure in `t`, so every one renders directly rather than being swept.
 

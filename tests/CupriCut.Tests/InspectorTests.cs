@@ -122,6 +122,47 @@ public sealed class InspectorTests
     }
 
     [Fact]
+    public void A_comment_inside_keyframes_is_reported()
+    {
+        // Two comments between the stops moved a bar's final width from 545px to 714px, and
+        // nothing anywhere said so - no exception, no diagnostic, a smooth animation to the wrong
+        // number. CupriFace#184. Until that is fixed this warning is the only thing that catches it.
+        const string Html = """
+            <div class="a">x</div>
+            <style>body,html{font-family:"Noto Sans";}
+              .a { width:10px; height:24px; background-color:#d9642a; animation: bad 1s linear both; }
+              @keyframes bad { 0% { width:0; } /* here */ 100% { width:10px; } }
+            </style>
+            """;
+
+        using var harness = new Harness();
+        var x = Inspector.Examine(harness.Cut, harness.WriteComposition("kf.html", Html));
+
+        var found = Assert.Single(x.Findings, f => f.Code == Inspector.CommentInKeyframes);
+        Assert.Contains("bad", found.What);
+        Assert.Equal(FindingLevel.Warning, found.Level);
+    }
+
+    [Fact]
+    public void A_comment_ABOVE_a_keyframes_block_is_fine()
+    {
+        // Which is where it should go, and where every shipped composition now puts it.
+        const string Html = """
+            <div class="a">x</div>
+            <style>body,html{font-family:"Noto Sans";}
+              .a { width:10px; height:24px; background-color:#d9642a; animation: ok 1s linear both; }
+              /* the bar grows */
+              @keyframes ok { 0% { width:0; } 100% { width:10px; } }
+            </style>
+            """;
+
+        using var harness = new Harness();
+        var x = Inspector.Examine(harness.Cut, harness.WriteComposition("kf2.html", Html));
+
+        Assert.DoesNotContain(x.Findings, f => f.Code == Inspector.CommentInKeyframes);
+    }
+
+    [Fact]
     public void Being_impure_is_information_rather_than_a_fault()
     {
         // Correct, and slower. A verdict of "errors" for a composition that renders exactly what
@@ -157,6 +198,48 @@ public sealed class InspectorTests
         Assert.Equal(1280, x.Width);
         Assert.DoesNotContain(x.Findings, f => f.Code == "CF0072");
         Assert.Equal("clean", x.Verdict);
+    }
+
+    [Fact]
+    public void Two_documents_checked_at_once_do_not_swap_findings()
+    {
+        // The engine keeps ONE diagnostics sink for the whole process, and CupriDoctor.Check
+        // drains whatever is in it: 400 interleaved raw checks of these two documents moved 62 of
+        // 200 warnings onto the document that did not earn them and lost 110 of 200 outright.
+        // Never duplicated, which is what says the finding moved rather than being copied.
+        // CupriFace#185.
+        //
+        // Services/Doctor serialises every check in the process, which is exactly as much as can
+        // be fixed from outside. This is the regression test for that much.
+        //
+        // It does NOT render, and that is deliberate. A concurrent RENDER pollutes a check just as
+        // badly - 157 of 200, from a thread that never called the doctor at all - and no lock
+        // fixes that one, because the studio holds a document open for as long as a preview is on
+        // screen. A test that rendered here would be asserting something CupriCut cannot promise.
+        const string Ignores = """
+            <div class="a">x</div>
+            <style>body,html{font-family:"Noto Sans";} .a { letter-spacing: 2px; width:10px; height:10px; }</style>
+            """;
+        const string Plain = """
+            <div class="b">x</div>
+            <style>body,html{font-family:"Noto Sans";} .b { width:10px; height:10px; }</style>
+            """;
+
+        var strays = 0;
+        var lost = 0;
+
+        Parallel.For(0, 400, i =>
+        {
+            var ignores = i % 2 == 0;
+            var n = Doctor.Check(ignores ? Ignores : Plain, string.Empty, 1280, 720)
+                .Count(f => f.Code == "CF0050");
+
+            if (ignores && n == 0) Interlocked.Increment(ref lost);
+            if (!ignores && n > 0) Interlocked.Increment(ref strays);
+        });
+
+        Assert.Equal(0, strays);
+        Assert.Equal(0, lost);
     }
 
     [Fact]

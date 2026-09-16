@@ -1,0 +1,132 @@
+<!--
+  A ten-second countdown. Every digit is a timeline window.
+
+  What this one is for: PROVING THE TIMELINE DOES REAL WORK. A counting clock is the thing everyone
+  assumes needs a script, and this one is eleven divs and no logic at all - each number is on screen
+  for exactly one second because data-start and data-duration say so, and CupriCut generates the
+  window that puts it there.
+
+  It is also frame-exact in a way a scripted countdown is not. At any t the number showing is
+  whatever the windows say, not whatever a timer happened to have reached - so the frame at 6.999s
+  and the frame at 7.001s are the two you would expect, every render, on every machine.
+
+  Useful as it stands: a stream holding slate, a "doors open in" card, the last ten seconds of an
+  offer. Change the numbers and the ring to suit.
+
+  Written out longhand on purpose. In a PROJECT you would drive this from a model with data-repeat;
+  in a standalone composition there is no model, and eleven lines you can read beats a clever trick
+  you cannot.
+-->
+<div class="stage">
+  <div --cupricut-background class="backdrop"></div>
+
+  <div class="dial">
+    <div class="ring"><div class="fill"></div></div>
+
+    <div class="n" data-start="0" data-duration="1" data-track="count">10</div>
+    <div class="n" data-start="1" data-duration="1" data-track="count">9</div>
+    <div class="n" data-start="2" data-duration="1" data-track="count">8</div>
+    <div class="n" data-start="3" data-duration="1" data-track="count">7</div>
+    <div class="n" data-start="4" data-duration="1" data-track="count">6</div>
+    <div class="n" data-start="5" data-duration="1" data-track="count">5</div>
+    <div class="n" data-start="6" data-duration="1" data-track="count">4</div>
+    <div class="n" data-start="7" data-duration="1" data-track="count">3</div>
+    <div class="n" data-start="8" data-duration="1" data-track="count">2</div>
+    <div class="n" data-start="9" data-duration="1" data-track="count">1</div>
+
+    <div class="go" data-start="10" data-duration="2" data-track="count">GO</div>
+  </div>
+
+  <div class="caption">STARTING IN</div>
+</div>
+
+<style>
+  :root {
+    --bg: #0b0e14;
+    --ink: #f4f6fb;
+    --muted: #7d8ba3;
+    --accent: #d9642a;
+    --track: #1d2534;
+    --font: "Noto Sans";
+  }
+
+  .stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    font-family: var(--font);
+  }
+
+  .backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: var(--bg);
+  }
+
+  .dial {
+    margin-top: 168px;
+    width: 384px;
+    height: 384px;
+    position: relative;
+  }
+
+  /* The dial drains over the full ten seconds - a copper fill losing height inside a round,
+     clipping track. It is done by HEIGHT rather than by animating the background, because the
+     engine does not animate background or background-color: measured, and a keyframed gradient
+     simply holds its static value. Height, width, opacity and transform do animate. */
+  .ring {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 384px;
+    height: 384px;
+    border-radius: 192px;
+    background: var(--track);
+    overflow: hidden;
+  }
+
+  .fill {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 384px;
+    height: 384px;
+    background: var(--accent);
+    animation: drain 10s linear both;
+  }
+
+  /* Every number sits in the same place. Only the windows differ. */
+  .n, .go {
+    position: absolute;
+    left: 0;
+    top: 104px;
+    width: 384px;
+    text-align: center;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .n  { font-size: 176px; }
+  .go { font-size: 132px; color: var(--accent); }
+
+  .caption {
+    position: absolute;
+    left: 0;
+    top: 108px;
+    width: 100%;
+    text-align: center;
+    font-size: 17px;
+    font-weight: 700;
+    color: var(--muted);
+  }
+
+  @keyframes drain {
+    from { height: 384px; }
+    to   { height: 0; }
+  }
+</style>

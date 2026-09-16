@@ -82,6 +82,50 @@ public sealed class RenderToolTests
     }
 
     [Fact]
+    public void A_render_writes_the_events_beside_its_frames_and_says_where()
+    {
+        // The frame numbers are the RENDER'S, not the composition's: these marks are written at
+        // 2.4s and 0.4s, and at 10 fps that is frames 24 and 4. Rendered at 30 they would be 72
+        // and 12, which is why the sidecar belongs to the render.
+        const string Html = """
+            <div class="bar" data-cut-event="0.4:started; 2.4:full"></div>
+            <style>
+              body, html { font-family: "Noto Sans"; }
+              .bar { height: 40px; background: #d9642a; animation: grow 2s linear both; }
+              @keyframes grow { from { width: 0; } to { width: 400px; } }
+            </style>
+            """;
+
+        using var harness = new Harness();
+        var json = JsonSerializer.Deserialize<JsonElement>(RenderTools.RenderFrames(
+            harness.Cut, harness.WriteComposition("marked.html", Html), to: 0.3, fps: 10));
+
+        var events = json.GetProperty("events");
+        Assert.Equal(2, events.GetProperty("count").GetInt32());
+
+        var marks = events.GetProperty("marks");
+        Assert.Equal("started", marks[0].GetProperty("name").GetString());
+        Assert.Equal(4, marks[0].GetProperty("frame").GetInt32());
+        Assert.Equal(24, marks[1].GetProperty("frame").GetInt32());
+
+        var sidecar = events.GetProperty("sidecar").GetString()!;
+        Assert.True(File.Exists(sidecar), sidecar);
+        Assert.EndsWith(".events.json", sidecar);
+    }
+
+    [Fact]
+    public void A_render_of_a_composition_with_no_events_says_nothing_about_them()
+    {
+        // Null rather than an empty block: most compositions declare nothing, and a section
+        // saying so on every answer is noise an agent has to read past every time.
+        using var harness = new Harness();
+        var json = JsonSerializer.Deserialize<JsonElement>(RenderTools.RenderFrames(
+            harness.Cut, harness.WriteComposition("plain.html", Harness.Keyframed), to: 0.1));
+
+        Assert.False(json.TryGetProperty("events", out _));
+    }
+
+    [Fact]
     public void A_projects_scale_applies_when_the_caller_names_none()
     {
         using var harness = new Harness();

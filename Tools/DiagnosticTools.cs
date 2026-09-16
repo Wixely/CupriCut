@@ -113,6 +113,25 @@ public static class DiagnosticTools
                 problems = x.Timeline.Problems.Count == 0 ? null : x.Timeline.Problems,
             } : null,
 
+            // Frame numbers are at the composition's OWN rate. A render at another rate writes
+            // its own sidecar, because the same marks at 25 fps are different frames.
+            events = x.Events.Any ? new
+            {
+                count = x.Events.Events.Count,
+                names = x.Events.Names,
+                marks = x.Events.Events.Select(e => new
+                {
+                    e.Name,
+                    at = Math.Round(e.At, 6),
+                    frame = e.Frame(x.Fps),
+                    element = e.Describe(),
+                    e.Track,
+                    e.Relative,
+                    pastTheEnd = x.Duration > 0 && e.At > x.Duration ? true : (bool?)null,
+                }),
+                problems = x.Events.Problems.Count == 0 ? null : x.Events.Problems,
+            } : null,
+
             backdrop = x.Backdrops.Count == 0 ? null : new
             {
                 marked = x.Backdrops.Count,

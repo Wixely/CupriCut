@@ -24,6 +24,30 @@ internal static class JsonOpts
 /// says about what it cost.</summary>
 internal static class ToolSupport
 {
+    /// <summary>The events file a render leaves beside its output, for the answer to point at.
+    ///
+    /// <para>Written at render time and not on request: a frame number only exists once the rate
+    /// is known, and the rate belongs to the render rather than to the composition. Null when the
+    /// composition declared nothing, so an ordinary render's answer says nothing about events and
+    /// a directory of them stays clean.</para></summary>
+    public static object? Events(Composition loaded, string directory, string stem, double fps, double seconds)
+    {
+        if (Services.Events.WriteSidecar(
+                loaded.Html, Path.GetFileName(loaded.Path), directory, stem, fps, seconds) is not { } path)
+        {
+            return null;
+        }
+
+        var plan = Services.Events.Plan(loaded.Html);
+        return new
+        {
+            sidecar = path,
+            count = plan.Events.Count,
+            names = plan.Names,
+            marks = plan.Events.Select(e => new { e.Name, at = Math.Round(e.At, 6), frame = e.Frame(fps) }),
+        };
+    }
+
     /// <summary>The frames of a clip of <paramref name="duration"/> seconds, snapped to the
     /// nearest whole frame. See <see cref="ClipPlanner"/> for the full story, including what the
     /// length actually came to - which the tools report, always.</summary>

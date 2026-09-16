@@ -12,11 +12,16 @@
 
   Useful as it stands: quarterly numbers, a poll, a league table, downloads by week. The bars are
   percentages of the track, so swapping the figures is a text edit and one width per row.
+
+  The overtake is also declared as an EVENT. It happens at 2.95s - solved from the keyframes, not
+  guessed - and nothing in the render can tell you that, because the crossing is a consequence of
+  two widths rather than something either bar does. `data-cut-event` puts the number in the
+  sidecar a render writes, so a sting can land on it without anyone eyeballing the file.
 -->
 <div class="stage">
   <div --cupricut-background class="backdrop"></div>
 
-  <div class="panel">
+  <div class="panel" data-cut-event="2.95:lead-changed">
     <div class="eyebrow">DOWNLOADS BY WEEK</div>
     <div class="title">Nobody opened a browser</div>
 

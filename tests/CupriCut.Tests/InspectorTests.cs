@@ -243,6 +243,82 @@ public sealed class InspectorTests
     }
 
     [Fact]
+    public void Declared_events_come_back_with_the_examination()
+    {
+        const string Html = """
+            <div class="scene" data-start="4" data-duration="4" data-track="card"
+                 data-cut-event="+1.5:landed">x</div>
+            <style>body,html{font-family:"Noto Sans";} .scene { width:40px; height:24px; }</style>
+            """;
+
+        using var harness = new Harness();
+        var x = Inspector.Examine(harness.Cut, harness.WriteComposition("e.html", Html));
+
+        var e = Assert.Single(x.Events.Events);
+        Assert.Equal("landed", e.Name);
+        Assert.Equal(5.5, e.At, 6);
+        Assert.Equal("card", e.Track);
+        Assert.Equal("clean", x.Verdict);
+    }
+
+    [Fact]
+    public void An_event_that_cannot_be_read_reaches_the_findings()
+    {
+        // The alternative is a mark that simply never appears anywhere, and an author who finds
+        // out when the thing that was meant to happen does not.
+        const string Html = """
+            <div class="a" data-cut-event="halfway">x</div>
+            <style>body,html{font-family:"Noto Sans";} .a { width:40px; height:24px; }</style>
+            """;
+
+        using var harness = new Harness();
+        var x = Inspector.Examine(harness.Cut, harness.WriteComposition("bad.html", Html));
+
+        var found = Assert.Single(x.Findings, f => f.Code == Inspector.EventProblem);
+        Assert.Contains("not a time and a name", found.What);
+        Assert.Equal("warnings", x.Verdict);
+    }
+
+    [Fact]
+    public void An_event_nothing_will_ever_reach_is_reported()
+    {
+        // A timeline that ends at 4s and a mark at 9s. Not an error - a clip is often a window
+        // onto something longer - but it is also exactly what a typo looks like.
+        const string Html = """
+            <div class="a" data-start="0" data-duration="4" data-cut-event="9:never">x</div>
+            <style>body,html{font-family:"Noto Sans";} .a { width:40px; height:24px; }</style>
+            """;
+
+        using var harness = new Harness();
+        var x = Inspector.Examine(harness.Cut, harness.WriteComposition("late.html", Html));
+
+        var found = Assert.Single(x.Findings, f => f.Code == Inspector.EventProblem);
+        Assert.Contains("past the end", found.What);
+        Assert.Equal(FindingLevel.Warning, found.Level);
+    }
+
+    [Fact]
+    public void Declaring_events_does_not_make_a_composition_impure()
+    {
+        // The whole design in one assertion. An event is a number in a file - it changes no
+        // rendering decision, so a composition that declares fifty still renders every frame
+        // directly. A callback-based design could not promise this.
+        const string Html = """
+            <div class="a" data-cut-event="0.5:a; 1:b; 1.5:c">x</div>
+            <style>body,html{font-family:"Noto Sans";}
+              .a { width:10px; height:24px; animation: grow 2s linear both; }
+              @keyframes grow { from { width:0; } to { width:10px; } }
+            </style>
+            """;
+
+        using var harness = new Harness();
+        var x = Inspector.Examine(harness.Cut, harness.WriteComposition("pure.html", Html));
+
+        Assert.Equal(3, x.Events.Events.Count);
+        Assert.True(x.Purity.PureInTime);
+    }
+
+    [Fact]
     public void Every_shipped_composition_lints_clean()
     {
         // The samples are the documentation. One that warns is teaching whatever it warns about.

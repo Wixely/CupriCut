@@ -14,12 +14,19 @@
   ticking number needs the data to change over time and CSS cannot do that. That is the honest
   version and it is also how broadcast does it - a price that visibly WAS something and now is not
   reads better than one that blurs through the middle.
+
+  It also declares EVENTS. `data-cut-event` does not run anything - a render writes the marks out
+  beside the file as `<name>.events.json`, with the frame each one lands on, and whatever is
+  driving the render decides what they mean. Here that is the moment the new price is fully
+  legible, which is when a caption would be pushed or an impression logged. The times are written
+  as `+` offsets so they move with their scene: change `data-start` and they follow.
 -->
 <div class="stage">
   <div --cupricut-background class="backdrop"></div>
 
   <!-- Scene one: the fixture. -->
-  <div class="scene" data-start="0" data-duration="6" data-track="card">
+  <div class="scene" data-start="0" data-duration="6" data-track="card"
+       data-cut-event="+0.6:fixture-shown; +1.4:prices-up">
     <div class="card">
       <div class="meta">
         <div class="comp">PREMIER LEAGUE</div>
@@ -47,7 +54,8 @@
   </div>
 
   <!-- Scene two: the move. -->
-  <div class="scene" data-start="6" data-duration="6" data-track="card">
+  <div class="scene" data-start="6" data-duration="6" data-track="card"
+       data-cut-event="+0.5:boost-shown; +2.4:boost-landed">
     <div class="card">
       <div class="meta">
         <div class="comp move">PRICE BOOST</div>

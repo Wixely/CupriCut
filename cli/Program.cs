@@ -128,6 +128,7 @@ public static class Program
 
         var written = writer.Complete();
         Console.WriteLine($"{directory}  ({written.Length} PNGs)");
+        ReportEvents(loaded, directory, stem, fps, times.Length / Math.Max(fps, 1));
         ReportTiming(plan);
         Report(report);
         return 0;
@@ -176,6 +177,7 @@ public static class Program
             Console.WriteLine($"  {export.Targets[i].Name,-7} {Path.GetFileName(video.Path),-24} {video.Bytes,12:N0} bytes  {video.PixelFormat}");
             if (video.Note is { Length: > 0 }) Console.WriteLine($"          {video.Note}");
         }
+        ReportEvents(loaded, directory, stem, fps, times.Length / Math.Max(fps, 1));
         ReportTiming(plan);
         Report(report);
         return 0;
@@ -201,6 +203,17 @@ public static class Program
             {
                 var end = double.IsPositiveInfinity(w.End) ? "end" : $"{w.End:0.###}s";
                 Console.WriteLine($"  {w.Start,8:0.###}s -> {end,-9}  {w.Describe()}");
+            }
+        }
+
+        if (x.Events.Any)
+        {
+            Console.WriteLine();
+            Console.WriteLine($"EVENTS  {x.Events.Events.Count} at {x.Fps:0.##} fps");
+            foreach (var e in x.Events.Events)
+            {
+                var past = x.Duration > 0 && e.At > x.Duration ? "  (past the end)" : "";
+                Console.WriteLine($"  {e.At,8:0.###}s  frame {e.Frame(x.Fps),-6}  {e.Describe()}{past}");
             }
         }
 
@@ -295,9 +308,33 @@ public static class Program
 
         Console.WriteLine($"{video.Path}  ({video.Bytes:N0} bytes, {video.Frames} frames, {video.Seconds:0.######}s, {codec.Name}, {video.PixelFormat})");
         if (video.Note is { Length: > 0 }) Console.WriteLine($"  {video.Note}");
+        ReportEvents(loaded, Path.GetDirectoryName(video.Path)!,
+            Path.GetFileNameWithoutExtension(video.Path), fps, video.Seconds);
         ReportTiming(plan);
         Report(report);
         return 0;
+    }
+
+    /// <summary>The events file a render leaves behind, when the composition declared any.
+    ///
+    /// <para>Written at render time rather than on request because the frame numbers only exist
+    /// once the rate is known, and the rate is a property of the render and not of the
+    /// composition. The same marks at 25 fps are different frames.</para>
+    ///
+    /// <para>Nothing is written when there are no events, so a directory of ordinary renders does
+    /// not fill up with empty files.</para></summary>
+    private static void ReportEvents(
+        Composition loaded, string directory, string stem, double fps, double seconds)
+    {
+        if (Events.WriteSidecar(loaded.Html, Path.GetFileName(loaded.Path), directory, stem, fps, seconds)
+            is not { } path)
+        {
+            return;
+        }
+
+        var plan = Events.Plan(loaded.Html);
+        Console.WriteLine($"  {Path.GetFileName(path)}  ({plan.Events.Count} event(s): "
+                          + $"{string.Join(", ", plan.Names.Take(4))}{(plan.Names.Count > 4 ? ", ..." : "")})");
     }
 
     private static int Probe(CupriCutService cut, VideoEncoder encoder)

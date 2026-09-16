@@ -92,7 +92,7 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `render_video` | raw RGBA into ffmpeg; `alpha` gives a transparent clear, embedded or as a matte | **in** |
 | `export` | a LIST of outcomes — mp4, h265, webm, mov, gif, frames, mask, matte — all from one sweep | **in** |
 | `list_formats` | what each format gives you, for choosing between them | **in** |
-| `inspect` | the timeline as data — tracks, windows, assets, and every font asked for | **in** |
+| `inspect` | the timeline as data — tracks, windows, events, assets, and every font asked for | **in** |
 | `lint` | will it render the same somewhere else, and does it render what you meant | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
@@ -181,8 +181,8 @@ Ten of them, in `compositions/`. Each is a working starting point and each exist
 | `scenes.html` | **The timeline.** Three scenes over nine seconds — `data-start`, `data-duration`, and a late scene giving its children their own zero. |
 | `timebase.html` | The frame-accuracy proof: a clock that reads its own frame number, for checking 1200 frames really are 10.000 seconds. |
 | `countdown.html` | **A counting clock with no clock.** Ten seconds, eleven divs, no logic: each number is on screen for exactly one second because `data-start` says so. Frame-exact in a way a scripted timer is not. |
-| `bar-race.html` | **Data that moves.** Four ranked bars with the lead changing hands - the overtake is three shapes in one `@keyframes`, because one element gets one animation. |
-| `fixture-card.html` | **A composition that is really a template.** Two timeline scenes and a price that shortens; the markup never moves, only the text and the figures. The shape you actually ship. |
+| `bar-race.html` | **Data that moves.** Four ranked bars with the lead changing hands — the overtake is three shapes in one `@keyframes`, because one element gets one animation. The moment the lead changes is declared as an event, because nothing in the render could tell you when two widths cross. |
+| `fixture-card.html` | **A composition that is really a template**, and the **events** example. Two timeline scenes and a price that shortens; the markup never moves, only the text and the figures. The shape you actually ship. |
 
 Every one is pure in `t`, so every one renders directly rather than being swept.
 
@@ -275,6 +275,44 @@ Two rules, both the engine's rather than choices, and both discovered by measuri
 `calc(var(--cut-start) + 0.2s)` is the obvious next thing to want and does **not** work — `calc()`
 is not supported in `animation-delay` at all. Stagger inside a scene goes in the keyframe
 percentages instead.
+
+### Events: the composition says when, you decide what
+
+Something has to happen halfway through an animation. `data-cut-event` declares the moment:
+
+```html
+<div class="scene" data-start="6" data-duration="6" data-track="card"
+     data-cut-event="+0.5:boost-shown; +2.4:boost-landed">
+```
+
+A render writes them out beside its own output as `<name>.events.json`, with the frame each one
+lands on **at the rate that render used**:
+
+```json
+{ "composition": "fixture-card.html", "fps": 30, "duration": 12,
+  "events": [
+    { "name": "boost-landed", "at": 8.4, "frame": 252, "element": "div.scene", "track": "card" }
+  ] }
+```
+
+`inspect` lists the same marks, and `lint` reports one it cannot read or one nothing will ever
+reach. A `+` time is an offset from the element's own `data-start`, so marks move with their scene
+instead of having to be recalculated when it does.
+
+**They are declared and reported, never executed** — and that is the design, not a shortcut. The
+obvious version is a callback the engine fires as the clock passes a mark, and it cannot work here,
+because **nothing plays: a render seeks.** Frames come out of `Animate(t)` in whatever order and at
+whatever granularity the sweep chooses, workers render different stretches of the same film at the
+same time, a re-render of one bad second starts at `t=4.0`, and a composition that is pure in `t`
+is never swept at all. A callback would fire out of order, fire repeatedly, or never fire. (The
+same is true upstream, which is why HyperFrames' own render path has no such hook either.)
+
+A number and a name in a file has none of those problems. It is right under every one of those
+cases because it is not tied to the traversal, it **survives the render** — the output is a file,
+and the file is what gets used later — and the thing acting on it is a program you already control.
+
+It also costs the render nothing: an event changes no rendering decision, so a composition that
+declares fifty of them is still pure in `t` and still renders every frame directly.
 
 ### Projects live in folders
 

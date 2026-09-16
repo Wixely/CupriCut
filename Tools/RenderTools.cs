@@ -251,6 +251,7 @@ public static class RenderTools
             files = written.Length <= 40 ? written.Select(Path.GetFileName) : null,
             first = Path.GetFileName(written[0]),
             last = Path.GetFileName(written[^1]),
+            events = ToolSupport.Events(loaded, directory, stem, rate, times.Length / rate),
             backdrop = ToolSupport.Backdrop(loaded, showBackground),
             cost = ToolSupport.Cost(report),
         }, JsonOpts.Default);
@@ -348,6 +349,8 @@ public static class RenderTools
             pixelFormat = video.PixelFormat,
             note = video.Note,
             timing = Timing(plan),
+            events = ToolSupport.Events(loaded, Path.GetDirectoryName(video.Path)!,
+                Path.GetFileNameWithoutExtension(video.Path), video.Fps, video.Seconds),
             backdrop = ToolSupport.Backdrop(loaded, showBackground),
             cost = ToolSupport.Cost(report),
         }, JsonOpts.Default);
@@ -457,6 +460,7 @@ public static class RenderTools
                 note = video.Note,
             }),
             timing = Timing(plan),
+            events = ToolSupport.Events(loaded, directory, stem, rate, videos[0].Seconds),
             backdrop = ToolSupport.Backdrop(loaded, showBackground),
             cost = ToolSupport.Cost(report),
         }, JsonOpts.Default);

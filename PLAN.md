@@ -337,6 +337,36 @@ built on, so it goes first.
     Worth revisiting only if someone actually wants to film a UI. The engine's side of it already
     works, so the cost is CupriCut's plumbing, not research.
 
+15b. **Events.** ~~Not in the original plan~~ **Done.** What the interaction track was reaching for
+    and got wrong. The real want was never "someone clicks the animation" — it was *"halfway
+    through this, something else should happen"*.
+
+    `data-cut-event="+2.4:boost-landed"` on any element. `inspect` lists the marks, `lint` reports
+    one it cannot read or one nothing will reach, and every render writes them beside its own
+    output as `<name>.events.json` with the frame each lands on **at that render's rate** — the
+    same marks at 25 fps are different frames, so the sidecar belongs to the render and not to the
+    composition. A `+` time is an offset from the element's own `data-start`, so marks move with
+    their scene rather than needing recalculating when it does.
+
+    **Declared and reported, never executed**, and that is the design rather than a shortcut. The
+    obvious version is a callback fired as the clock passes a mark, and it cannot work, because
+    **nothing plays here: a render seeks.** Frames come out of `Animate(t)` in whatever order and
+    granularity the sweep chooses, workers render different stretches of one film at once, a
+    re-render of one bad second starts at `t=4.0`, and a pure composition is never swept at all.
+    A callback would fire out of order, fire repeatedly, or never fire. Researching the question
+    upstream settled it: HyperFrames' own render path is seek-only for exactly the same reason, so
+    callbacks there are unreliable by construction too.
+
+    A number and a name in a file is right under every one of those cases, because it is not tied
+    to the traversal at all. It also **survives the render** — the output is a file, and the file
+    is what gets used later, which a callback cannot help with — and the thing acting on it is a
+    program the author already controls.
+
+    And unlike the interaction track it costs the render nothing: an event changes no rendering
+    decision, so a composition declaring fifty of them is still pure in `t`. There is a test that
+    asserts exactly that, because it is the whole difference between this feature and the one that
+    was dropped.
+
 ## Milestone 4 — cue the animation off the audio (4–5 days)
 
 **The idea.** Point CupriCut at an audio file and let the motion be driven by what is in it — hits

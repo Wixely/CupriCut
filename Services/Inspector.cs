@@ -34,6 +34,7 @@ public sealed record Examination(
     double Fps,
     double Duration,
     TimelinePlan Timeline,
+    EventPlan Events,
     IReadOnlyList<BackdropElement> Backdrops,
     IReadOnlyList<string> Stylesheets,
     IReadOnlyList<string> References,
@@ -92,6 +93,9 @@ public static partial class Inspector
     /// <summary>A CSS comment inside a <c>@keyframes</c> block, which corrupts its stops.</summary>
     public const string CommentInKeyframes = "CUT006";
 
+    /// <summary>A declared event that cannot be read, or that nothing will ever reach.</summary>
+    public const string EventProblem = "CUT007";
+
     public static Examination Examine(CupriCutService cut, string path)
     {
         var loaded = Timeline.Apply(cut.LoadComposition(path));
@@ -104,6 +108,7 @@ public static partial class Inspector
 
         var timeline = loaded.Timeline;
         var duration = timeline.Any ? timeline.Duration : defaults?.Duration ?? 0;
+        var events = Events.Plan(loaded.Html);
 
         using var doc = cut.OpenDocument(loaded);
         doc.Animate(0);
@@ -120,11 +125,11 @@ public static partial class Inspector
             .ToList();
 
         var fontProblems = report.Problems.Select(p => $"'{p.Family}': {p.Reason}").ToList();
-        var findings = Collect(loaded, timeline, fontProblems, fonts, settled, doc.PendingLoads,
-            width, height, out var purity);
+        var findings = Collect(loaded, timeline, events, duration, fontProblems, fonts, settled,
+            doc.PendingLoads, width, height, out var purity);
 
         return new Examination(
-            loaded.Path, width, height, fps, duration, timeline,
+            loaded.Path, width, height, fps, duration, timeline, events,
             loaded.Backdrops, loaded.Stylesheets, [.. loaded.References.Distinct()],
             report.RegisteredFamilies, fonts, settled, doc.PendingLoads, purity, findings);
     }
@@ -145,8 +150,8 @@ public static partial class Inspector
     private static partial System.Text.RegularExpressions.Regex KeyframesBlock();
 
     private static List<Finding> Collect(
-        Composition loaded, TimelinePlan timeline, IReadOnlyList<string> fontProblems,
-        IReadOnlyList<FontUse> fonts, bool settled, int pending,
+        Composition loaded, TimelinePlan timeline, EventPlan events, double duration,
+        IReadOnlyList<string> fontProblems, IReadOnlyList<FontUse> fonts, bool settled, int pending,
         int width, int height, out PurityVerdict purity)
     {
         var findings = new List<Finding>();
@@ -201,6 +206,18 @@ public static partial class Inspector
             findings.Add(new Finding(FindingLevel.Warning, CommentInKeyframes,
                 $"@keyframes {name} has a CSS comment between its stops, which corrupts their offsets.",
                 "Move the comment above the @keyframes block. The animation will otherwise play to values you did not write, with no other sign."));
+
+        foreach (var problem in events.Problems)
+            findings.Add(new Finding(FindingLevel.Warning, EventProblem, problem));
+
+        // Not an error - a clip is often a window onto a longer composition, and an event outside
+        // that window is a perfectly sensible thing to have written. But it is also exactly what a
+        // typo looks like, and nothing else would ever mention it.
+        foreach (var e in events.PastTheEnd(duration))
+            findings.Add(new Finding(FindingLevel.Warning, EventProblem,
+                $"'{e.Name}' is at {TimelineWindow.Seconds(e.At)}s, past the end of a "
+                + $"{TimelineWindow.Seconds(duration)}s composition, so nothing will reach it.",
+                "Move the event, or give the composition a duration that covers it."));
 
         purity = Purity.Analyse(loaded);
         if (!purity.PureInTime)

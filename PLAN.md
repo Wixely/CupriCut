@@ -231,12 +231,41 @@ built on, so it goes first.
 
 ## Milestone 2 — the timeline (3–4 days)
 
-12. **Timeline layer.** `data-start` / `data-duration` / `data-track` decide what is in the document
-   at `t`, through the ordinary model and binding — elements are kept out until their window opens
-   and removed when it closes, so a `@keyframes` on an element starts when the element appears.
-   Emit `animation-delay: {start}s` alongside each element's window: the engine's clock is
-   absolute and stamps no creation time, and `animation-delay` is measured against that same clock,
-   so this is what gives a late element its own zero. Verified by experiment at four sample times.
+12. ~~**Timeline layer.**~~ **Done**, and not the way this item described. `data-start` /
+   `data-duration` / `data-track` decide what is on screen when.
+
+   **Nothing is added to or removed from the document per frame.** The original plan said elements
+   would be kept out until their window opened; doing that means reloading the document, which
+   costs 25–370 ms against 3–7 ms for a frame, and would have thrown away the single biggest
+   property this renderer has. Instead each timed element gets a generated `@keyframes` holding it
+   at `opacity: 0` outside its window and `1` inside, with ADJACENT stops so the change is a cut
+   rather than a fade. `Animate(t)` does the rest, and **a composition with a timeline is still
+   pure in `t`** — so it still renders directly rather than being swept.
+
+   Four things were measured first, and three of the obvious mechanisms do not exist:
+
+   | | |
+   |---|---|
+   | `visibility` in a keyframe | **not animated** |
+   | `display` in a keyframe | **not animated** |
+   | two animations on one element | **does nothing**, comma-separated, shorthand or longhand |
+   | `opacity` with adjacent stops | works, and steps exactly |
+   | `animation-delay` against the absolute clock | works — the one claim in the original item that held |
+   | `var(--x)` as an `animation-delay` | works |
+   | `calc()` in an `animation-delay` | **not supported**, with or without a variable |
+
+   Because an element cannot carry two animations, **a timed element's own `animation` is reserved
+   by CupriCut**, and a violation is reported rather than letting the author's animation vanish. A
+   wrapper element would have avoided the rule and was the first design; it also silently changes
+   the layout, because the wrapper becomes the flex child rather than the element.
+
+   For a late scene's own zero, `--cut-start` is published on each timed element and inherits into
+   its subtree, so a child writes `animation-delay: var(--cut-start)`. `calc()` not working means
+   stagger inside a scene goes in the keyframe percentages instead — `compositions/scenes.html`
+   does both and says so.
+
+   Verified in pixels at six sample times, and by eye across a nine-second three-scene sheet where
+   each late scene is caught mid-entrance.
 13. **`inspect`** — the timeline as data: tracks, windows, fonts asked for, images referenced,
    duration.
 14. **`lint`** — the determinism verdict: platform-resolved fonts, sources that never loaded,

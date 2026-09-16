@@ -69,7 +69,7 @@ public sealed class PreviewSession : IDisposable
     public static PreviewSession Open(CupriCutService cut, string composition, int width, int height,
         SKColor clear, bool? showBackground)
     {
-        var loaded = Backdrop.Resolve(cut.LoadComposition(composition), showBackground);
+        var loaded = Timeline.Apply(Backdrop.Resolve(cut.LoadComposition(composition), showBackground));
         var defaults = loaded.Defaults;
         var w = width > 0 ? width : defaults?.Width > 0 ? defaults.Width : cut.Options.DefaultWidth;
         var h = height > 0 ? height : defaults?.Height > 0 ? defaults.Height : cut.Options.DefaultHeight;

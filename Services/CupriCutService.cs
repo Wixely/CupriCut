@@ -387,7 +387,11 @@ public sealed class CupriCutService
         // 10-45x faster. So sweep when it is needed and not otherwise.
         // Before the purity analysis and before anything opens a document: hiding the backdrop is
         // a change to the markup, and everything downstream should be looking at one composition.
-        var composition = Backdrop.Resolve(LoadedComposition(compositionOrNull, spec), spec.ShowBackground);
+        // Both rewrites happen before the purity analysis and before anything opens a document, so
+        // everything downstream sees one composition. The timeline's generated animations are
+        // @keyframes like any other, so a composition with a timeline is still pure in t.
+        var composition = Timeline.Apply(
+            Backdrop.Resolve(LoadedComposition(compositionOrNull, spec), spec.ShowBackground));
         var purity = spec.ForceSweep
             ? new PurityVerdict(false, ["the caller asked for a full sweep"])
             : Purity.Analyse(composition);

@@ -392,7 +392,7 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         // Resolved HERE as well as in the sweep, because the parallel path opens its own documents
         // straight from this composition and never passes through Sweep. Applying it twice is a
         // no-op - the composition remembers.
-        composition = Backdrop.Resolve(composition, spec.ShowBackground);
+        composition = Timeline.Apply(Backdrop.Resolve(composition, spec.ShowBackground));
 
         var purity = Purity.Analyse(composition);
         var wanted = ParallelRenderer.Resolve(workers, cut.Options.RenderWorkers);
@@ -543,7 +543,7 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         IReadOnlyList<ExportTarget> targets, double outputFps)
     {
         cut.EnsureVideoAllowed();
-        composition = Backdrop.Resolve(composition, spec.ShowBackground);
+        composition = Timeline.Apply(Backdrop.Resolve(composition, spec.ShowBackground));
 
         var (present, alpha, _) = Geometry(composition, spec);
 

@@ -28,6 +28,15 @@ public sealed record Composition(
     /// still lists them once they are hidden.</summary>
     public IReadOnlyList<BackdropElement> Backdrops => Backdrop.Find(Html);
 
+    /// <summary>Whether <see cref="Timeline.Apply"/> has already rewritten this. Carried rather
+    /// than re-detected, so a composition passing two resolution points is not rewritten twice -
+    /// the second pass would add a second class and a second keyframes.</summary>
+    public bool TimelineApplied { get; init; }
+
+    /// <summary>What is on screen when. Read off the markup, and still correct after the rewrite
+    /// because the rewrite only ADDS a class.</summary>
+    public TimelinePlan Timeline => Services.Timeline.Plan(Html, Css, Defaults?.Duration ?? 0);
+
     public RenderSettings? Defaults => Project?.Render;
 }
 

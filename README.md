@@ -168,7 +168,7 @@ cupricut projects
 
 ### The compositions that ship
 
-Six of them, in `compositions/`. Each is a working starting point and each exists to show one thing:
+Seven of them, in `compositions/`. Each is a working starting point and each exists to show one thing:
 
 | | what it is for |
 |---|---|
@@ -177,6 +177,7 @@ Six of them, in `compositions/`. Each is a working starting point and each exist
 | `revenue-card.html` | **A chart that draws itself**, bar by bar, on nothing but delays. |
 | `stat-counter.html` | **Sequencing.** Nothing happens at once: the card lifts, the bar draws, the number lands *on* the bar finishing, the caption follows. Order is the design. |
 | `caption-strip.html` | **The keying workflow**, end to end — a small overlay with nothing behind it, and a review backdrop that the export drops automatically. |
+| `scenes.html` | **The timeline.** Three scenes over nine seconds — `data-start`, `data-duration`, and a late scene giving its children their own zero. |
 | `timebase.html` | The frame-accuracy proof: a clock that reads its own frame number, for checking 1200 frames really are 10.000 seconds. |
 
 Every one is pure in `t`, so every one renders directly rather than being swept.
@@ -220,6 +221,34 @@ list_annotations(project: "review")
 resolve_annotation(project: "review", id: "ad54d3d2",
                    resolution: "moved the logo keyframe from 1.2s to 0.6s")
 ```
+
+### A composition can be a sequence
+
+`data-start` and `data-duration` say when an element is on screen. Nine seconds, three scenes:
+
+![Three scenes over nine seconds](docs/scenes.png)
+
+Nothing is added to or removed from the document per frame — that would mean reloading it, at
+25–370 ms against 3–7 ms for a frame. Each timed element gets a generated `@keyframes` that holds it
+at `opacity: 0` outside its window and `1` inside, with **adjacent stops** so the change is a cut
+and not a fade. `Animate(t)` does the rest, and a composition with a timeline is **still pure in
+`t`** — so it still renders directly.
+
+Two rules, both the engine's rather than choices, and both discovered by measuring:
+
+- **A timed element's own `animation` belongs to CupriCut.** The engine runs exactly one animation
+  per element — comma-separated lists do nothing, in either the shorthand or the longhand form — so
+  the window and an author's animation cannot share one. Put the motion on a child. A violation is
+  reported rather than silently eating the animation.
+- **A late scene needs `var(--cut-start)`.** The clock is absolute and stamps no creation time, so a
+  child of a scene appearing at 3s would otherwise have played its entrance at 0 and be sitting
+  still by the time you saw it. Each scene publishes `--cut-start`, custom properties inherit, and a
+  child writes `animation-delay: var(--cut-start)`. Look at the sheet above: scenes two and three
+  are caught mid-entrance, which is that working.
+
+`calc(var(--cut-start) + 0.2s)` is the obvious next thing to want and does **not** work — `calc()`
+is not supported in `animation-delay` at all. Stagger inside a scene goes in the keyframe
+percentages instead.
 
 ### Projects live in folders
 

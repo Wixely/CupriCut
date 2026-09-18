@@ -286,7 +286,9 @@ built on, so it goes first.
       which is where nearly every composition keeps its rules. Passing `""` checks the same
       document and finds them. `SampleTests` had been running the doctor over every shipped
       composition since it was written and had only ever read the markup. Raised as
-      [CupriFace#183](https://github.com/Wixely/CupriFace/issues/183).
+      [CupriFace#183](https://github.com/Wixely/CupriFace/issues/183), fixed in 0.25.1. `""` is
+      still passed explicitly: "no stylesheet" and "check nothing" should never have been the same
+      argument, and saying which is meant costs nothing.
     - The doctor's viewport defaults to 1024x768, so its overflow checks reported a 1280-wide
       composition as broken for being 1280 wide. It is asked at the composition's own frame now.
 
@@ -308,11 +310,14 @@ built on, so it goes first.
     Sequentially, both are perfect.
 
     It surfaced as `bar-race.html` failing its own lint-clean test for a `letter-spacing` it does
-    not contain, and passing whenever it was run alone. `Services/Doctor` serialises CupriCut's own
-    checks, which fixes the first case; nothing fixes the second from outside, because the studio
+    not contain, and passing whenever it was run alone. `Services/Doctor` serialised CupriCut's own
+    checks, which fixed the first case; nothing fixed the second from outside, because the studio
     holds a document open for as long as a preview is on screen and a lock covering renders would
-    block `lint` indefinitely. The test assembly runs one class at a time until this is fixed.
-    Raised as [CupriFace#185](https://github.com/Wixely/CupriFace/issues/185).
+    block `lint` indefinitely, so the test assembly ran one class at a time.
+
+    Raised as [CupriFace#185](https://github.com/Wixely/CupriFace/issues/185) and **fixed in
+    0.25.1** — 0 of 200 both ways on re-measurement. The lock and the serialised test assembly are
+    both gone; the measurement stays as a canary, because the failure mode is silent.
 
 ## Milestone 3 — interaction ~~(2 days)~~ **dropped**
 
@@ -506,9 +511,15 @@ None is confirmed as a bug: each is a case where the engine differs from a brows
 first guess about the cause was wrong, so each wants an isolated reproduction before it is filed.
 The rule this repository already follows applies — measure it, then claim it.
 
-**`line-height` in `px` produces a line box 3x too tall.** Filed as
-[CupriFace#181](https://github.com/Wixely/CupriFace/issues/181). Measured on 0.25.0 by reading the
-text node's own box off the render tree, at `font-size: 48px`:
+~~**`line-height` in `px` produces a line box 3x too tall.**~~ **Fixed in CupriFace 0.25.1**
+([#181](https://github.com/Wixely/CupriFace/issues/181)). Re-measured on the upgrade at
+`font-size: 20px`: no declaration → 24px (20 x 1.2), `20px` → 20px, `1.5em` → 30px, `150%` → 30px.
+All four correct, including the two forms that used to be ignored outright. **The odometer is
+unblocked** — it was abandoned because its digits landed a full cell below the window meant to show
+them, and that was this.
+
+What follows is kept because the lesson is not about `line-height`. Measured on 0.25.0 by reading
+the text node's own box off the render tree, at `font-size: 48px`:
 
 | declaration | expected | actual | |
 |---|---|---|---|
@@ -541,8 +552,9 @@ It explains every layout problem the samples hit, and the conclusions drawn from
 - A box with an explicit height and a matching line-height rendered as an empty rectangle.
 
 Filed as [CupriFace#181](https://github.com/Wixely/CupriFace/issues/181): reproducible in six lines,
-silently ruins vertical rhythm, and the workaround (never set `line-height`) is not one anybody
-would guess.
+silently ruined vertical rhythm, and the workaround (never set `line-height`) was not one anybody
+would guess. No shipped composition sets one, precisely because of this, so the fix changes none of
+them — it just means the next one can.
 
 **OS file drop** is filed separately as
 [CupriFace#182](https://github.com/Wixely/CupriFace/issues/182) — `DesktopHost` surfaces no drop
@@ -556,10 +568,40 @@ Still open, and genuinely not understood:
 | `align-items: center` centred correctly in isolation, but spread a flex item's children across the full height when a full-height `position:absolute` sibling shared the flex line | Whether an absolutely positioned child is still participating as a flex item. Possibly also a line-height artefact — it has not been re-tested since that was isolated. |
 | `position: absolute` children inside a nested positioned box landed outside their container | Isolated probes behaved correctly, so the cause is something else in the real composition. Same caveat. |
 | `align-self: center` and `margin: auto` do not centre a flex item | Probably simply unsupported; `align-items` on the parent works and is the answer. |
-| `letter-spacing` is silently ignored | CF0050. Still the case on 0.25.0. |
+| `letter-spacing` is silently ignored | CF0050. Still the case on 0.25.1. Reported, at least, so it is not silent to `lint`. |
+| `repeating-linear-gradient()` is reported by NAME, not by use | New in 0.25.1: CF0051 is a substring search over the whole document, so a comment saying a file avoids one — or body text that merely spells it — fails the lint. Filed as [CupriFace#188](https://github.com/Wixely/CupriFace/issues/188). `caption-strip.html` had to stop writing the name down. |
 
 ~~`border-left` / `border-right` / `border-bottom` are ignored~~ — **fixed in CupriFace 0.25.0.** The
 studio's three separators, which had never been drawn, now are.
+
+### 0.25.0 → 0.25.1: four of the five issues raised here, closed
+
+Every one re-measured on the upgrade rather than taken on trust, because three of them were the
+kind that look fine from the outside:
+
+| | before | after |
+|---|---|---|
+| [#185](https://github.com/Wixely/CupriFace/issues/185) concurrent checks swap findings | 62 and 110 of 200 wrong | **0 and 0** |
+| [#185](https://github.com/Wixely/CupriFace/issues/185) a concurrent RENDER pollutes a check | 157 of 200 | **0 of 200** |
+| [#183](https://github.com/Wixely/CupriFace/issues/183) null stylesheet disables the CSS checks | 0 findings vs 2 | **2 vs 2** |
+| [#184](https://github.com/Wixely/CupriFace/issues/184) a comment inside `@keyframes` | 545px vs 714px | **545px both** |
+| [#181](https://github.com/Wixely/CupriFace/issues/181) `line-height` | 3x box; `em`/`%` ignored | **all four correct** |
+
+[#182](https://github.com/Wixely/CupriFace/issues/182) (file drop) is still open.
+
+**What came back out of CupriCut**, which is the point of raising them:
+
+- **`Services/Doctor`'s lock.** It serialised every check in the process to stop them robbing each
+  other, and could not do anything about the render case. Now a thin helper.
+- **One test class at a time.** The suite had to disable xunit's parallelism entirely, because a
+  test that rendered and a test that linted could not run at the same time. Restored: 26s → 21s.
+- **CUT006, the comment-in-keyframes lint.** Written because nothing else would catch it. With the
+  engine fixed it would be warning authors away from something harmless, which is worse than not
+  warning at all — a lint that is wrong costs more than a missing one.
+- The `?? string.Empty` note in `Inspector`, which is now a preference rather than load-bearing.
+
+One thing went the other way: CF0051 arrived new in 0.25.1 and immediately failed a shipped
+composition for a declaration it does not have (see the table above).
 
 ## Decided — do not re-open
 

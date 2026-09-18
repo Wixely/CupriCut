@@ -28,15 +28,10 @@ public sealed class DoctorTests(ITestOutputHelper output)
         var model = Populated();
         var app = new StudioApp(model);
 
-        // Through the gate: an unguarded check hands its findings to whatever else is checking
-        // at that moment, and takes theirs. See Doctor, and CupriFace#185.
-        lock (Doctor.Gate)
-        {
-            var report = CupriDoctor.Check(app.Html, app.Css ?? string.Empty, app.Components, model: app.Model);
-            output.WriteLine(report.ToString());
+        var report = CupriDoctor.Check(app.Html, app.Css ?? string.Empty, app.Components, model: app.Model);
+        output.WriteLine(report.ToString());
 
-            Assert.False(report.HasErrors, report.ToString());
-        }
+        Assert.False(report.HasErrors, report.ToString());
     }
 
     [Fact]
@@ -45,10 +40,8 @@ public sealed class DoctorTests(ITestOutputHelper output)
         // CF0021 on its own, named, so a regression reads as what it is rather than as "the markup
         // got worse". A control that can never open is invisible in a screenshot.
         var app = new StudioApp(Populated());
-        List<CupriFace.Diagnostics.Finding> inert;
-        lock (Doctor.Gate)
-            inert = [.. CupriDoctor.Check(app.Html, app.Css ?? string.Empty, app.Components, model: app.Model)
-                .Findings.Where(f => f.Code == "CF0021")];
+        var inert = CupriDoctor.Check(app.Html, app.Css ?? string.Empty, app.Components, model: app.Model)
+            .Findings.Where(f => f.Code == "CF0021").ToList();
         Assert.True(inert.Count == 0,
             "a control was given no open binding, so it can never open:\n" +
             string.Join("\n", inert.Select(f => $"  {f.Code} (line {f.Line}): {f.Message}")));

@@ -13,15 +13,21 @@
   Useful as it stands: quarterly numbers, a poll, a league table, downloads by week. The bars are
   percentages of the track, so swapping the figures is a text edit and one width per row.
 
-  The overtake is also declared as an EVENT. It happens at 2.95s - solved from the keyframes, not
-  guessed - and nothing in the render can tell you that, because the crossing is a consequence of
-  two widths rather than something either bar does. `data-cut-event` puts the number in the
-  sidecar a render writes, so a sting can land on it without anyone eyeballing the file.
+  The overtake is also declared as an EVENT, and it is the reason this feature exists. Nothing in
+  the render can tell you when the lead changes: the crossing is a consequence of two widths rather
+  than anything either bar does, so there is no keyframe at that moment and no element to hang it
+  on. `data-cut-event` puts the number in the sidecar a render writes, and a sting can land on it.
+
+  It happens at 2.75s, MEASURED - the two bars' widths read off 150 rendered frames until orange
+  passes blue. It was first written as 2.95s, solved algebraically, and that was wrong by six
+  frames: the algebra had the challenger passing the leader's FINAL width, but the leader is still
+  growing, and the two curves meet earlier than that. Which is the whole lesson of this repository
+  in one number - the plausible value arrived at by reasoning was not the value.
 -->
 <div class="stage">
   <div --cupricut-background class="backdrop"></div>
 
-  <div class="panel" data-cut-event="2.95:lead-changed">
+  <div class="panel" data-cut-event="2.75:lead-changed">
     <div class="eyebrow">DOWNLOADS BY WEEK</div>
     <div class="title">Nobody opened a browser</div>
 
@@ -135,10 +141,11 @@
   /* Row one is behind for the first two seconds, then surges past. Three shapes in one animation,
      because two animations on one element do nothing here.
 
-     NOTE the comments below sit OUTSIDE the @keyframes blocks. A comment INSIDE one silently
-     corrupts the stop percentages - two of them turned a bar that should finish at 545px into one
-     that finished at 714px, overrunning its own track. Nothing warned. See CupriFace#184, and
-     `cupricut lint`, which now refuses to let this happen quietly again. */
+     The comments below sit outside the @keyframes blocks, which is only a habit now. Writing this
+     composition against CupriFace 0.25.0, a comment INSIDE one silently corrupted the stop
+     percentages: two of them turned a bar that should finish at 545px into one that finished at
+     714px, overrunning its own track, with nothing anywhere saying so. Fixed in 0.25.1
+     (CupriFace#184) and re-measured on the upgrade - 545px either way. */
   .b1 { animation: overtake 3.6s ease-out 0.35s both; }
   .b2 { animation: leadThenHold 3.6s ease-out 0.35s both; background: var(--rival); }
   .b3 { animation: grow 3.2s ease-out 0.5s both; }

@@ -122,47 +122,6 @@ public sealed class InspectorTests
     }
 
     [Fact]
-    public void A_comment_inside_keyframes_is_reported()
-    {
-        // Two comments between the stops moved a bar's final width from 545px to 714px, and
-        // nothing anywhere said so - no exception, no diagnostic, a smooth animation to the wrong
-        // number. CupriFace#184. Until that is fixed this warning is the only thing that catches it.
-        const string Html = """
-            <div class="a">x</div>
-            <style>body,html{font-family:"Noto Sans";}
-              .a { width:10px; height:24px; background-color:#d9642a; animation: bad 1s linear both; }
-              @keyframes bad { 0% { width:0; } /* here */ 100% { width:10px; } }
-            </style>
-            """;
-
-        using var harness = new Harness();
-        var x = Inspector.Examine(harness.Cut, harness.WriteComposition("kf.html", Html));
-
-        var found = Assert.Single(x.Findings, f => f.Code == Inspector.CommentInKeyframes);
-        Assert.Contains("bad", found.What);
-        Assert.Equal(FindingLevel.Warning, found.Level);
-    }
-
-    [Fact]
-    public void A_comment_ABOVE_a_keyframes_block_is_fine()
-    {
-        // Which is where it should go, and where every shipped composition now puts it.
-        const string Html = """
-            <div class="a">x</div>
-            <style>body,html{font-family:"Noto Sans";}
-              .a { width:10px; height:24px; background-color:#d9642a; animation: ok 1s linear both; }
-              /* the bar grows */
-              @keyframes ok { 0% { width:0; } 100% { width:10px; } }
-            </style>
-            """;
-
-        using var harness = new Harness();
-        var x = Inspector.Examine(harness.Cut, harness.WriteComposition("kf2.html", Html));
-
-        Assert.DoesNotContain(x.Findings, f => f.Code == Inspector.CommentInKeyframes);
-    }
-
-    [Fact]
     public void Being_impure_is_information_rather_than_a_fault()
     {
         // Correct, and slower. A verdict of "errors" for a composition that renders exactly what
@@ -203,19 +162,23 @@ public sealed class InspectorTests
     [Fact]
     public void Two_documents_checked_at_once_do_not_swap_findings()
     {
-        // The engine keeps ONE diagnostics sink for the whole process, and CupriDoctor.Check
-        // drains whatever is in it: 400 interleaved raw checks of these two documents moved 62 of
-        // 200 warnings onto the document that did not earn them and lost 110 of 200 outright.
-        // Never duplicated, which is what says the finding moved rather than being copied.
-        // CupriFace#185.
+        // A canary on the ENGINE rather than a test of anything here, kept because of how badly
+        // this one bit and how quietly it did it.
         //
-        // Services/Doctor serialises every check in the process, which is exactly as much as can
-        // be fixed from outside. This is the regression test for that much.
+        // Through CupriFace 0.25.0 the engine kept ONE diagnostics sink for the whole process, and
+        // CupriDoctor.Check drained whatever was in it - so a check returned findings produced by
+        // other documents on other threads. 400 interleaved checks of these two: 62 of 200 CLEAN
+        // documents reported the other's warning, 110 of 200 that should have warned reported
+        // nothing, and none was ever duplicated, which is what said the finding MOVED. Worse, a
+        // thread doing nothing but RENDERING polluted 157 of 200 checks of an unrelated document
+        // without calling the doctor at all.
         //
-        // It does NOT render, and that is deliberate. A concurrent RENDER pollutes a check just as
-        // badly - 157 of 200, from a thread that never called the doctor at all - and no lock
-        // fixes that one, because the studio holds a document open for as long as a preview is on
-        // screen. A test that rendered here would be asserting something CupriCut cannot promise.
+        // Nothing here could fix that second case, so this suite ran one class at a time until
+        // CupriFace#185 landed in 0.25.1. Re-measured on the upgrade: 0 and 0, and 0 under a
+        // concurrent render. This is what says it stays that way, and it is cheap.
+        //
+        // It first showed up as a shipped composition failing its own lint-clean test for a
+        // property it does not contain, and passing whenever it was run alone.
         const string Ignores = """
             <div class="a">x</div>
             <style>body,html{font-family:"Noto Sans";} .a { letter-spacing: 2px; width:10px; height:10px; }</style>

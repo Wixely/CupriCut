@@ -90,9 +90,6 @@ public static partial class Inspector
     /// <summary>A font the composition asked for that nothing could answer.</summary>
     public const string MissingFont = "CUT005";
 
-    /// <summary>A CSS comment inside a <c>@keyframes</c> block, which corrupts its stops.</summary>
-    public const string CommentInKeyframes = "CUT006";
-
     /// <summary>A declared event that cannot be read, or that nothing will ever reach.</summary>
     public const string EventProblem = "CUT007";
 
@@ -134,21 +131,6 @@ public static partial class Inspector
             report.RegisteredFamilies, fonts, settled, doc.PendingLoads, purity, findings);
     }
 
-    /// <summary>The names of any <c>@keyframes</c> blocks containing a CSS comment.</summary>
-    private static IEnumerable<string> CommentedKeyframes(string? css)
-    {
-        if (string.IsNullOrWhiteSpace(css)) yield break;
-
-        foreach (System.Text.RegularExpressions.Match m in KeyframesBlock().Matches(css))
-            if (m.Groups["body"].Value.Contains("/*", StringComparison.Ordinal))
-                yield return m.Groups["name"].Value;
-    }
-
-    // The block runs to the brace that closes it, which is one level deeper than the stops.
-    [System.Text.RegularExpressions.GeneratedRegex(
-        @"@keyframes\s+(?<name>[A-Za-z_-][\w-]*)\s*\{(?<body>(?:[^{}]|\{[^{}]*\})*)\}")]
-    private static partial System.Text.RegularExpressions.Regex KeyframesBlock();
-
     private static List<Finding> Collect(
         Composition loaded, TimelinePlan timeline, EventPlan events, double duration,
         IReadOnlyList<string> fontProblems, IReadOnlyList<FontUse> fonts, bool settled, int pending,
@@ -159,10 +141,11 @@ public static partial class Inspector
         // The engine's own reader first. It knows things about its own layout that nothing here
         // could work out - an element that produced no render output, a box with no area holding
         // visible content, a property it silently ignored.
-        // `?? string.Empty` is load-bearing. Passing NULL as the stylesheet turns the CSS checks
-        // off entirely - including the document's own inline <style>, which is where nearly every
-        // composition keeps its rules. Measured: the same markup reports two CF0050 warnings with
-        // "" and none with null. Raised as CupriFace#183.
+        // "" and not null. Through 0.25.0 a null stylesheet turned the CSS checks off entirely,
+        // inline <style> included, and this tool read nothing but markup while looking like it was
+        // working - CupriFace#183, fixed in 0.25.1 and re-measured on the upgrade (both forms now
+        // report the same two warnings). Kept explicit anyway: "no stylesheet" and "check nothing"
+        // should never have been the same argument, and this says which one is meant.
         // At the composition's OWN frame, not the doctor's 1024x768 default. The overflow checks
         // are about content running past the viewport, so asking about the wrong viewport reports a
         // 1280-wide composition as broken for being 1280 wide.
@@ -200,13 +183,8 @@ public static partial class Inspector
 
         // A comment between the stops of a @keyframes block silently changes the animation's
         // values - two of them moved a bar's final width from 545px to 714px, and nothing anywhere
-        // said so. CupriFace#184. Until that is fixed this is the only thing that will catch it,
+        // said so. CupriFace#184,
         // and it is worth a warning precisely because commenting your keyframes is normal practice.
-        foreach (var name in CommentedKeyframes(loaded.Html).Concat(CommentedKeyframes(loaded.Css)))
-            findings.Add(new Finding(FindingLevel.Warning, CommentInKeyframes,
-                $"@keyframes {name} has a CSS comment between its stops, which corrupts their offsets.",
-                "Move the comment above the @keyframes block. The animation will otherwise play to values you did not write, with no other sign."));
-
         foreach (var problem in events.Problems)
             findings.Add(new Finding(FindingLevel.Warning, EventProblem, problem));
 

@@ -11,6 +11,17 @@ sprocket holes bitten out of the edge read as damage rather than as film, and a 
 halves slid PARALLEL to the cut read as a chipped tile rather than a cut one. The perpendicular
 offset is the whole mark.
 
+The SVG then made that same parallel-slide mistake a second time, for a different reason, and it
+was only found by RENDERING IT - a browser screenshot beside the PNG, which is the only way to
+check a vector file this repository has. Two things were wrong and only one of them was visible:
+
+  - clip-path applies in the user space of the element referencing it, so a transform on the
+    inner rect slides the rect underneath a stationary clip. The cut edge never moves and no gap
+    opens. The translate has to be OUTSIDE the clip. This was the one that looked broken.
+  - the gradient used objectBoundingBox units, mapping the whole ramp across the rect, while the
+    raster painted it across the CANVAS and the inset shape only ever sampled t = 0.118 to 0.886.
+    Same stops, same direction, visibly harsher. Both now project onto GRAD_FROM -> GRAD_TO.
+
 Writes:
     docs/icon.svg          the master, and what the README uses
     docs/icon.png          512, for anywhere that wants a raster
@@ -32,6 +43,19 @@ PART = 10         # how far each half moves PERPENDICULAR to the cut
 # Copper, lit from the top left. Three stops because two looked like plastic.
 STOPS = [(0.0, '#F7B562'), (0.5, '#D9642A'), (1.0, '#9E3A12')]
 
+# The gradient axis, in the SAME 256 coordinates as everything else, running corner to corner
+# across the whole canvas rather than across the shape.
+#
+# That distinction is the entire reason the first SVG looked wrong while the PNGs looked right.
+# The raster painted this ramp across the canvas and the shape - inset by PAD - only ever sampled
+# t = 0.118 to 0.886, the middle of it. The SVG used objectBoundingBox units, which map t = 0 to 1
+# across the RECT, so it showed the pale top and the near-black bottom that the raster never
+# reaches. Same three stops, same direction, and visibly harsher.
+#
+# Both now project onto this one axis, so there is nothing left to disagree about.
+GRAD_FROM = (0.0, 0.0)
+GRAD_TO = (163.76, 304.13)
+
 REPO = os.path.dirname(os.path.dirname(os.path.abspath(__file__)))
 DOCS = os.path.join(REPO, 'docs')
 
@@ -49,12 +73,19 @@ def offsets():
 
 # ---- raster ----------------------------------------------------------------------------------
 def ramp(size):
+    """The copper, projected onto GRAD_FROM -> GRAD_TO exactly as a linear gradient does it."""
     g = Image.new('RGB', (size, size))
     px = g.load()
-    a, b, c = (rgb(s[1]) for s in STOPS)
+    a, b, c = (rgb(st[1]) for st in STOPS)
+
+    k = size / BOX
+    ax, ay = GRAD_FROM[0] * k, GRAD_FROM[1] * k
+    dx, dy = GRAD_TO[0] * k - ax, GRAD_TO[1] * k - ay
+    span = dx * dx + dy * dy
+
     for y in range(size):
         for x in range(size):
-            t = (x * 0.35 + y * 0.65) / (size - 1)
+            t = min(1.0, max(0.0, ((x - ax) * dx + (y - ay) * dy) / span))
             u, lo, hi = (t / 0.5, a, b) if t < 0.5 else ((t - 0.5) / 0.5, b, c)
             px[x, y] = tuple(int(lo[i] + (hi[i] - lo[i]) * u) for i in range(3))
     return g
@@ -97,8 +128,11 @@ def render(size=2048):
 
 # ---- vector -----------------------------------------------------------------------------------
 def svg():
-    """The same geometry, from the same constants. Both rects are identical and are translated
-    AFTER the gradient is mapped to them, which is how the raster does it too."""
+    """The same geometry and the same gradient axis, from the same constants.
+
+    userSpaceOnUse, not the default objectBoundingBox: the gradient belongs to the CANVAS, not to
+    each rect. Mapping it per-rect is what made the first version of this file look harsher than
+    the PNGs - see the note by GRAD_TO."""
     dx, dy = offsets()
     t = math.tan(math.radians(ANGLE))
     c, far = BOX / 2, BOX * 3
@@ -110,21 +144,31 @@ def svg():
      role="img" aria-label="CupriCut">
   <title>CupriCut</title>
   <defs>
-    <linearGradient id="copper" x1="0" y1="0" x2="0.7" y2="1.3">
+    <linearGradient id="copper" gradientUnits="userSpaceOnUse"
+                    x1="{GRAD_FROM[0]}" y1="{GRAD_FROM[1]}" x2="{GRAD_TO[0]}" y2="{GRAD_TO[1]}">
       {stops}
     </linearGradient>
     <clipPath id="above"><polygon points="{edge} {far},{-far} {-far},{-far}"/></clipPath>
     <clipPath id="below"><polygon points="{edge} {far},{far} {-far},{far}"/></clipPath>
   </defs>
 
-  <!-- One frame, cut once, the halves parted perpendicular to the cut. -->
-  <g clip-path="url(#above)">
-    <rect x="{PAD}" y="{PAD}" width="{BOX - 2 * PAD}" height="{BOX - 2 * PAD}" rx="{RADIUS}"
-          fill="url(#copper)" transform="translate({-dx:.3f} {-dy:.3f})"/>
+  <!-- One frame, cut once, the halves parted perpendicular to the cut.
+
+       The translate is OUTSIDE the clip on purpose. A clip-path applies in the user space of the
+       element that references it, so with the transform on the inner rect the clip stays put and
+       the rect slides underneath it - the cut edge never moves, no gap opens, and the result looks
+       like a chipped tile. Clipping first and moving the whole piece is what the raster does. -->
+  <g transform="translate({-dx:.3f} {-dy:.3f})">
+    <g clip-path="url(#above)">
+      <rect x="{PAD}" y="{PAD}" width="{BOX - 2 * PAD}" height="{BOX - 2 * PAD}" rx="{RADIUS}"
+            fill="url(#copper)"/>
+    </g>
   </g>
-  <g clip-path="url(#below)">
-    <rect x="{PAD}" y="{PAD}" width="{BOX - 2 * PAD}" height="{BOX - 2 * PAD}" rx="{RADIUS}"
-          fill="url(#copper)" transform="translate({dx:.3f} {dy:.3f})"/>
+  <g transform="translate({dx:.3f} {dy:.3f})">
+    <g clip-path="url(#below)">
+      <rect x="{PAD}" y="{PAD}" width="{BOX - 2 * PAD}" height="{BOX - 2 * PAD}" rx="{RADIUS}"
+            fill="url(#copper)"/>
+    </g>
   </g>
 </svg>
 '''

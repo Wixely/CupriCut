@@ -660,8 +660,8 @@ Still open, and genuinely not understood:
 | `align-items: center` centred correctly in isolation, but spread a flex item's children across the full height when a full-height `position:absolute` sibling shared the flex line | Whether an absolutely positioned child is still participating as a flex item. Possibly also a line-height artefact — it has not been re-tested since that was isolated. |
 | `position: absolute` children inside a nested positioned box landed outside their container | Isolated probes behaved correctly, so the cause is something else in the real composition. Same caveat. |
 | `align-self: center` and `margin: auto` do not centre a flex item | Probably simply unsupported; `align-items` on the parent works and is the answer. |
-| `letter-spacing` is silently ignored | CF0050. Still the case on 0.25.1. Reported, at least, so it is not silent to `lint`. |
-| `repeating-linear-gradient()` is reported by NAME, not by use | New in 0.25.1: CF0051 is a substring search over the whole document, so a comment saying a file avoids one — or body text that merely spells it — fails the lint. Filed as [CupriFace#188](https://github.com/Wixely/CupriFace/issues/188). `caption-strip.html` had to stop writing the name down. |
+| `letter-spacing` is silently ignored | CF0050. Still the case on 0.26.1. Reported, at least, so it is not silent to `lint`. |
+| ~~`repeating-linear-gradient()` is reported by NAME~~ | ~~New in 0.25.1~~ **Fixed in 0.26.1.** CF0051 arrived as a substring search over the whole document, so a comment saying a file avoids one — or body text that merely spelled it — failed the lint. [CupriFace#188](https://github.com/Wixely/CupriFace/issues/188). `caption-strip.html` has its sentence back, and `AuthoringGuideTests` now asserts that a property is reported from the declaration rather than the prose. |
 
 ~~`border-left` / `border-right` / `border-bottom` are ignored~~ — **fixed in CupriFace 0.25.0.** The
 studio's three separators, which had never been drawn, now are.

@@ -22,14 +22,14 @@
   export infers showBackground from the formats it was asked for, and a mask of a composition with
   an opaque backdrop would be a white rectangle.
 
-  It is one gradient with hard stops rather than a repeating one, because the engine does not
-  paint repeating gradients - CupriDoctor reports that rather than leaving it to be found in a
-  render.
+  It is one gradient with hard stops rather than a repeating-linear-gradient(), because the engine
+  does not paint repeating gradients - CupriDoctor reports that as CF0051 rather than leaving it to
+  be found in a render.
 
-  The name of that CSS function is deliberately not written out anywhere above. In CupriFace 0.25.1
-  the check is a substring search over the whole document, so spelling it out - in a comment, or
-  even in text the composition PAINTS - makes this file fail its own lint for a declaration it does
-  not have. Raised as CupriFace#188; the words can go back when it is fixed.
+  That sentence could not be written between CupriFace 0.25.1 and 0.26.1. CF0051 arrived as a
+  SUBSTRING SEARCH over the whole document, so naming the function - in a comment, or even in text
+  a composition paints - failed the file's own lint for a declaration it does not have. Raised as
+  CupriFace#188 and fixed in 0.26.1, so the words are back.
 -->
 <div class="stage">
   <div --cupricut-background="review backdrop" class="checks"></div>

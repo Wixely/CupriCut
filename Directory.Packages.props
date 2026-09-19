@@ -5,8 +5,8 @@
 
   <ItemGroup>
     <!-- The engine. Time is an argument: doc.Animate(t) is what the whole renderer stands on. -->
-    <PackageVersion Include="CupriFace" Version="0.25.1" />
-    <PackageVersion Include="CupriFace.Shell" Version="0.25.1" />
+    <PackageVersion Include="CupriFace" Version="0.26.1" />
+    <PackageVersion Include="CupriFace.Shell" Version="0.26.1" />
     <!-- Pinned to the engine's own SkiaSharp: SKImage and SKCanvas cross the boundary. -->
     <PackageVersion Include="SkiaSharp" Version="3.116.1" />
   </ItemGroup>

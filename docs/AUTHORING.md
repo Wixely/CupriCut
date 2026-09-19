@@ -3,7 +3,7 @@
 Everything you need to compose for CupriCut, and every way the engine differs from a browser.
 
 **This document is measured, not remembered**, and the measurements are **tests**. Every claim
-below was produced by rendering a document and reading the pixels, against **CupriFace 0.25.1** —
+below was produced by rendering a document and reading the pixels, against **CupriFace 0.26.1** —
 and each one is asserted in `AuthoringGuideTests`, so this page is a description of what that file
 measures rather than prose about the engine.
 
@@ -233,17 +233,10 @@ composition sets one. They can now.
 | | |
 |---|---|
 | `letter-spacing` | Silently ignored — measured, text is the same width with and without. Reported as `CF0050`, so `lint` catches it. |
-| repeating gradients | Parse but paint **nothing**. Use one gradient with hard stops: `linear-gradient(90deg, #a 0 20px, #b 20px 40px)`. Reported as `CF0051` — but see the warning below. |
+| repeating gradients | Parse but paint **nothing**. Use one gradient with hard stops: `linear-gradient(90deg, #a 0 20px, #b 20px 40px)`. Reported as `CF0051`. |
 | `align-self: center`, `margin: auto` | Do not centre a flex item. Use `align-items` on the parent, which does work. |
 | `<img>` | Not a primitive the engine draws — it lays out and stays empty. Use `<cupri-image src="...">`, which takes a `data:` URI or a path beside the composition. Reported as `CF0030`. |
 | JavaScript | There is none, by design. No `<script>`, no event handlers, no GSAP. |
-
-> **`CF0051` is currently a substring search.** In 0.25.1 it fires on the *text*
-> `repeating-linear-gradient` anywhere in the document — including inside an HTML comment, inside a
-> CSS comment, and inside body text the composition paints. A file that merely explains why it
-> avoids repeating gradients fails its own lint. Raised as
-> [CupriFace#188](https://github.com/Wixely/CupriFace/issues/188); until it is fixed, do not write
-> the name down. `caption-strip.html` carries this workaround.
 
 ### Components
 

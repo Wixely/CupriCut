@@ -158,6 +158,29 @@ public class AuthoringGuideTests : IDisposable
     }
 
     [Fact]
+    public void A_property_is_reported_from_the_declaration_and_not_from_the_prose()
+    {
+        // CF0051 arrived in 0.25.1 as a substring search over the whole document, so a file could
+        // not say IN A COMMENT that it avoids repeating gradients without failing its own lint -
+        // and a composition that merely PAINTED the words failed too. CupriFace#188, fixed in
+        // 0.26.1. caption-strip.html carried the workaround of not writing the name down.
+        //
+        // Asserted for letter-spacing as well, since CF0050 was the check that always got this
+        // right and is what the fix made CF0051 match.
+        Assert.Equal(1, Reported("CF0051",
+            Head + ".b{width:200px;height:60px;background:repeating-linear-gradient(90deg,#d9642a 0 20px,#111 20px 40px);}</style>"));
+
+        Assert.Equal(0, Reported("CF0051",
+            Head + "/* deliberately not a repeating-linear-gradient() */.b{width:200px;height:60px;background:#d9642a;}</style>"));
+
+        Assert.Equal(0, Reported("CF0051",
+            "<!-- avoids a repeating-linear-gradient() on purpose -->" + Head + ".b{width:200px;height:60px;background:#d9642a;}</style>"));
+
+        Assert.Equal(0, Reported("CF0050",
+            Head + "/* letter-spacing is ignored here */.b{width:200px;height:60px;background:#d9642a;}</style>"));
+    }
+
+    [Fact]
     public void A_single_border_side_paints()
     {
         // Fixed in 0.25.0. The studio's three separators had never been drawn.
@@ -199,6 +222,10 @@ public class AuthoringGuideTests : IDisposable
     }
 
     // ---- machinery ---------------------------------------------------------------------------
+
+    /// <summary>How many findings of one code a document produces.</summary>
+    private static int Reported(string code, string html) =>
+        CupriCut.Services.Doctor.Check(html, string.Empty, 1280, 720).Count(f => f.Code == code);
 
     private static readonly SKColor Accent = new(0xd9, 0x64, 0x2a);
 

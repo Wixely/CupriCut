@@ -16,8 +16,23 @@ namespace CupriCut.Tests;
 /// measure. When the engine changes, this file fails, and the document is KNOWN to be wrong rather
 /// than quietly becoming so.</para>
 /// </summary>
-public class AuthoringGuideTests
+public class AuthoringGuideTests : IDisposable
 {
+    // Through the Harness, not CupriDocument.Load, for two reasons.
+    //
+    // The first is that it CRASHED the test host on Linux CI - not a failed assertion, a native
+    // abort - because a bare document has no registered face, and the runner has no system font to
+    // fall back on. 319 tests passed and then the process died.
+    //
+    // The second is the one that would matter even if it had not: this file quotes exact pixel
+    // numbers, and the guide quotes them back. A measurement taken against whatever font the
+    // machine happened to have is not a measurement of anything. The Harness registers the Noto
+    // Sans this repository ships and sets FontPolicy.RegisteredOnly, so 24px is 24px everywhere.
+    private readonly Harness _harness = new();
+    private int _n;
+
+    public void Dispose() => _harness.Dispose();
+
     // ---- "What actually animates" ------------------------------------------------------------
 
     [Theory]
@@ -199,18 +214,18 @@ public class AuthoringGuideTests
 
     private static string Raw(string css) => Head + css + "</style>";
 
-    private static Extent Delayed(string delay, double at) => Box(
+    private Extent Delayed(string delay, double at) => Box(
         Head + ":root{--d:1s;}"
         + ".b{width:10px;height:40px;background:#d9642a;animation:grow 1s linear " + delay + " both;}"
         + "@keyframes grow{from{width:10px;}to{width:300px;}}</style>", at);
 
-    private static int LineBox(string rule) =>
+    private int LineBox(string rule) =>
         Box(Raw(".b{font-size:20px;width:400px;background:#d9642a;" + rule + "}"), 0, "One line").H;
 
-    private static int TextWidth(string rule) =>
+    private int TextWidth(string rule) =>
         Box(Raw(".b{font-size:40px;width:800px;color:#d9642a;" + rule + "}"), 0, "MMMMM").W;
 
-    private static int Centred(string parent, string child) => Box(
+    private int Centred(string parent, string child) => Box(
         "<div class=\"row\"><div class=\"b\"></div></div><style>"
         + "body,html{font-family:\"Noto Sans\";background:#000;}"
         + ".row{display:flex;width:400px;height:200px;" + parent + "}"
@@ -218,14 +233,24 @@ public class AuthoringGuideTests
 
     private readonly record struct Extent(int X, int Y, int W, int H);
 
-    private static SKBitmap Render(string html, double t, string text = "")
+    private SKBitmap Render(string html, double t, string text = "")
     {
         if (text.Length > 0)
             html = html.Replace("<div class=\"b\"></div>", $"<div class=\"b\">{text}</div>");
 
-        using var doc = CupriDocument.Load(html, null);
-        doc.Animate(t);
+        var name = _harness.WriteComposition($"probe{_n++}.html", html);
+        var loaded = _harness.Cut.LoadComposition(name);
+
+        using var doc = _harness.Cut.OpenDocument(loaded);
+
+        // Settle BEFORE the frame you want, exactly as CupriCutService.Sweep does. Settling
+        // re-lays-out from zero, so animating first and settling after throws the frame away and
+        // renders t=0 - which reads as "the animation did not run" and is how this file spent a
+        // build reporting that width does not animate.
+        doc.Animate(0);
         doc.Settle(900, 300, TimeSpan.FromSeconds(5));
+        doc.Animate(t);
+
         using var image = doc.RenderToImage(900, 300);
         return SKBitmap.FromImage(image);
     }
@@ -233,7 +258,7 @@ public class AuthoringGuideTests
     /// <summary>The bounding box of everything painted in the accent colour, which is the element
     /// under test - nothing else in these documents is that colour. Width -1 means nothing at all
     /// was painted, which several of these tests are specifically about.</summary>
-    private static Extent Box(string html, double t, string text = "")
+    private Extent Box(string html, double t, string text = "")
     {
         using var bitmap = Render(html, t, text);
 
@@ -251,7 +276,7 @@ public class AuthoringGuideTests
     }
 
     /// <summary>The colour at a point the element certainly covers.</summary>
-    private static SKColor Centre(string html, double t)
+    private SKColor Centre(string html, double t)
     {
         using var bitmap = Render(html, t);
         return Opaque(bitmap.GetPixel(20, 20));

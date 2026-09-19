@@ -41,6 +41,7 @@ public static class Program
                 "probe" => Probe(cut, encoder),
                 "inspect" => Inspect(cut, opts),
                 "lint" => Lint(cut, opts),
+                "audio" => Audio(cut, opts),
                 "calibrate" => Calibrate(cut, encoder, opts),
                 "fonts" => Fonts(cut, opts),
                 "projects" => Projects(cut),
@@ -236,6 +237,45 @@ public static class Program
         foreach (var f in x.Fonts)
             Console.WriteLine($"  {(f.MachineDependent ? "!" : " ")} {f.Asked,-20} {f.Weight,4}  -> {f.Answered ?? "(nothing)"} ({f.Source})");
         if (x.Fonts.Count == 0) Console.WriteLine("  (none asked for)");
+
+        return 0;
+    }
+
+    /// <summary>Where the hits are in a track, as a table to read before writing keyframes.</summary>
+    private static int Audio(CupriCutService cut, CommandLine opts)
+    {
+        cut.EnsureVideoAllowed();
+
+        var fps = opts.Number("fps", cut.Options.DefaultFps);
+        var path = cut.ResolveRead(opts.Require("audio"));
+        var analysis = AudioDecoder.Analyse(
+            cut.Options.FfmpegPath, path, fps, opts.Number("max-seconds", 1800));
+
+        Console.WriteLine($"{analysis.Source}  {analysis.Seconds:0.###}s at {analysis.Fps:0.##} fps "
+                          + $"({(int)Math.Round(analysis.Seconds * analysis.Fps)} frames)");
+
+        // The confidence first and plainly, because every other number here is only as good as it.
+        Console.WriteLine(analysis.Tempo.Usable
+            ? $"  {analysis.Tempo.Bpm:0.##} BPM, confidence {analysis.Tempo.Confidence:0.00} - beats emitted"
+            : $"  no usable beat (search said {analysis.Tempo.Bpm:0.##} BPM at confidence {analysis.Tempo.Confidence:0.00}) "
+              + "- use onsets and sound boundaries");
+
+        Console.WriteLine();
+        Console.WriteLine(string.Join("   ", Enum.GetValues<CueKind>()
+            .Select(k => $"{k.ToString().ToLowerInvariant()} {analysis.Count(k)}")));
+
+        var kind = opts.Text("kind");
+        var cues = kind is { Length: > 0 }
+            ? analysis.Cues.Where(c => c.Kind.ToString().Equals(kind.Replace("-", ""), StringComparison.OrdinalIgnoreCase))
+            : analysis.Cues;
+
+        Console.WriteLine();
+        Console.WriteLine("      time  frame   kind        strength  snap");
+        foreach (var c in cues)
+        {
+            Console.WriteLine($"  {c.At,8:0.###}s {c.Frame,6}  {c.Kind,-10}  {c.Strength,8:0.00}"
+                              + $"  {c.SnapMs,+6:0.#}ms");
+        }
 
         return 0;
     }

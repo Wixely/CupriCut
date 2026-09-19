@@ -379,23 +379,38 @@ on the beat, a title that lands on the downbeat, a lower third that appears when
 Timing an animation to a track by hand is tedious and inexact; the track already knows where its
 events are.
 
-25. **`analyse_audio` — the cues as data.** ffmpeg is already a dependency and already does the
-    hard part: decode to mono PCM at a known rate and the envelope falls out. Compute per-frame RMS
-    and spectral flux in-process (no new dependency, and no black box whose version changes the
-    answer), and derive:
-    - **onsets** — a flux peak above an adaptive threshold. Where a hit is.
-    - **beats and a tempo** — autocorrelation of the onset envelope. Report the confidence, because
-      a spoken-word track has no beat and pretending otherwise is worse than saying so.
-    - **silence boundaries** — where speech or music starts and stops, which is what a lower third
-      actually wants to key off.
-    - **the loudness envelope itself**, decimated to the project's frame rate, for anything that
-      should breathe with the track rather than snap to it.
+25. ~~**`analyse_audio` — the cues as data.**~~ **Done.** Onsets, a tempo grid with a confidence,
+    sound boundaries, and a per-frame loudness envelope. `Services/AudioCues` is the analysis and is
+    pure - samples in, cues out - so it is tested against signals built to order rather than against
+    a recording: a click written at 2.000s either comes back at 2.000s or does not.
+    `Services/AudioDecoder` is the ffmpeg half, and a WAV is written by the tests rather than
+    checked in, so the round trip through a real decode is proven too.
 
-    Every cue comes back with a time, a kind and a strength in 0–1, snapped to the nearest frame
-    with the delta reported — the same rule `ClipPlanner` already applies to clip
-    lengths, for the same reason.
+    **Four things were wrong and measurement found all four**, which is the argument for building
+    it this way rather than reaching for a library:
 
-26. **Cues live in the project.** Stored in `.cut.json` alongside a hash of the audio, not
+    - `last = int.MinValue` made the minimum-gap check OVERFLOW, so the detector found **zero**
+      onsets in a signal that was nothing but onsets. It reported clean, empty results.
+    - Autocorrelation normalised by the overlap `(n - lag)` flatters long lags, and 120 BPM came
+      back as 60.09 - exactly half. Normalising by the full length and checking the halves fixed it.
+    - **A lag is not a period.** 120 BPM at this hop size is 21.53 hops and there is no such lag,
+      so the peak has to be interpolated before anything looks at it.
+    - Confidence as "how far the peak stands above the others" scored **0.658 on random noise** - a
+      confidently wrong answer, the exact failure the number exists to prevent. It is now agreement
+      (how many predicted beats have a hit on them) corrected for chance (what a grid would score by
+      luck on material this dense).
+
+    And one the tests were too loose to catch: autocorrelation alone locates a period to about half
+    a percent, which sounds close and is not - 128.81 against a true 128 walks **76ms across twelve
+    seconds**, more than two frames, and the far end of the grid sits on nothing. The grid is now
+    least-squares fitted to the onsets it is meant to describe: 128.02 BPM, confidence 1.00, every
+    downbeat carrying real energy. The test tolerance was 4% and passed the broken version; it is
+    0.5% now, because a tolerance loose enough to pass a wrong answer is not a test.
+
+26. **Cues live in the project.** *(Next. Needs the storage decision in the table below settled
+    first - the analysis does not depend on it, which is why it was built first.)*
+
+    Stored in `.cut.json` alongside a hash of the audio, not
     recomputed at render time. Two reasons. A render must be reproducible on a machine that has a
     different ffmpeg, and analysis is exactly the kind of thing that drifts between versions. And
     an agent that has read the cues once should not pay to read them again on every iteration —

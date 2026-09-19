@@ -93,6 +93,7 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `export` | a LIST of outcomes — mp4, h265, webm, mov, gif, frames, mask, matte — all from one sweep | **in** |
 | `list_formats` | what each format gives you, for choosing between them | **in** |
 | `inspect` | the timeline as data — tracks, windows, events, assets, and every font asked for | **in** |
+| `analyse_audio` | where the hits are in a track: onsets, a tempo grid, sound boundaries, a loudness envelope | **in** |
 | `lint` | will it render the same somewhere else, and does it render what you meant | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
@@ -322,6 +323,39 @@ and the file is what gets used later — and the thing acting on it is a program
 
 It also costs the render nothing: an event changes no rendering decision, so a composition that
 declares fifty of them is still pure in `t` and still renders every frame directly.
+
+### Timing motion to a track
+
+```
+$ cupricut audio --audio theme.wav --fps 30 --kind downbeat
+theme.wav  12s at 30 fps (360 frames)
+  128.02 BPM, confidence 1.00 - beats emitted
+
+onset 25   beat 19   downbeat 7   soundstart 0   soundend 0
+
+      time  frame   kind        strength  snap
+     0.267s      8  Downbeat        0.99   -11.8ms
+     2.167s     65  Downbeat        0.80    13.5ms
+     4.033s    121  Downbeat        0.45     5.4ms
+```
+
+Every cue carries the **frame** it lands on, because a frame is the smallest thing a render has —
+a title landing on frame 65 is `animation-delay: 2.167s` at 30fps. The distance each cue moved to
+reach its frame is reported rather than absorbed, the same rule clip lengths already follow.
+
+**The agent writes the keyframes.** There is no `data-cut-cue` binding and there may never need to
+be: the round trip through whatever is composing is already short, and it keeps the timing where
+the judgement is. Ask for the cues, write the delays.
+
+**Read the confidence.** Beat detection is good on percussive material and unreliable on everything
+else, so below 0.35 no beats are emitted at all — only onsets and sound boundaries, which are the
+dependable half. Sound boundaries are usually what a lower third actually wants anyway.
+
+The analysis is in-process — an FFT, a spectral flux, an adaptive threshold, an autocorrelation and
+a least-squares fit, about 400 lines. Not to avoid a dependency for its own sake, but because a
+library whose version changes the answer makes a render irreproducible in exactly the way this
+project refuses everywhere else. ffmpeg does the decoding, since it is already here and already
+reads everything.
 
 ### Projects live in folders
 

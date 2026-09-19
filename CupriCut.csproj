@@ -12,7 +12,7 @@
     <SelfContained Condition="'$(CupriCutSelfContained)' != ''">$(CupriCutSelfContained)</SelfContained>
     <RootNamespace>CupriCut</RootNamespace>
     <AssemblyName>CupriCut</AssemblyName>
-    <ApplicationIcon>wmcp.ico</ApplicationIcon>
+    <ApplicationIcon>cupricut.ico</ApplicationIcon>
   </PropertyGroup>
 
   <ItemGroup>
@@ -52,7 +52,7 @@
   </ItemGroup>
 
   <ItemGroup>
-    <EmbeddedResource Include="wmcp.ico" LogicalName="MCPSharp.wmcp.ico" />
+    <EmbeddedResource Include="cupricut.ico" LogicalName="CupriCut.cupricut.ico" />
   </ItemGroup>
 
   <ItemGroup>

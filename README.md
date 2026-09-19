@@ -1,3 +1,5 @@
+<img src="docs/icon.svg" alt="" width="104" align="right">
+
 # CupriCut
 
 **Write HTML, render video. No browser.**

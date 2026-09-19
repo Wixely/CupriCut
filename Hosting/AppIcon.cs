@@ -5,14 +5,14 @@ using Microsoft.AspNetCore.Http;
 
 namespace CupriCut.Hosting;
 
-public static class McpSharpIcon
+public static class AppIcon
 {
     private const int IconSmall = 0;
     private const int IconBig = 1;
     private const int LrDefaultColor = 0;
     private const int WmSetIcon = 0x0080;
     private const uint ResourceVersion = 0x00030000;
-    private const string ResourceName = "MCPSharp.wmcp.ico";
+    private const string ResourceName = "CupriCut.cupricut.ico";
 
     private static readonly Lazy<byte[]> IconBytes = new(LoadIconBytes);
 

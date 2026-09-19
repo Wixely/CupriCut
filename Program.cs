@@ -51,7 +51,7 @@ public static class Program
 
         if (!isService)
         {
-            McpSharpIcon.ApplyConsoleWindowIcon();
+            AppIcon.ApplyConsoleWindowIcon();
         }
 
         // The bootstrap logger runs before the try below, so anything it throws is unhandled and the

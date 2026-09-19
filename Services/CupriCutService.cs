@@ -1,6 +1,7 @@
 using System.Diagnostics;
 using CupriCut.Configuration;
 using CupriFace;
+using CupriFace.Components;
 using CupriFace.Text;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
@@ -327,6 +328,16 @@ public sealed class CupriCutService
         var doc = CupriDocument.Load(composition.Html, composition.Css);
         try
         {
+            // Without a registry every cupri-* element expands to nothing: it lays out, paints
+            // NOTHING, settles cleanly and lints clean. Measured - an 80x80 <cupri-image> with a
+            // data: URI painted 0 pixels without this line and exactly 6400 with it.
+            //
+            // The studio wired its own registry from the start, so the window's controls worked
+            // and nobody noticed that COMPOSITIONS had none. Meanwhile `lint` was telling authors
+            // to replace <img> (CF0030) with <cupri-image>, which is right, and which then drew
+            // nothing at all - the one substitution the tool actively recommends.
+            doc.UseComponents(ComponentRegistry.Default());
+
             foreach (var dir in ConfiguredFontDirectories.Select(Rooted).Where(Directory.Exists))
                 doc.LoadFonts(dir, recursive: true);
 

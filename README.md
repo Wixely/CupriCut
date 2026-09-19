@@ -167,6 +167,15 @@ cupricut video  --composition timebase.html --duration 10 --fps 120   # 1200 fra
 cupricut projects
 ```
 
+### Writing one
+
+**[docs/AUTHORING.md](docs/AUTHORING.md)** is the guide: what animates and what silently does not,
+the one-animation-per-element rule, the `calc()` that is treated as zero, the timeline and event
+vocabulary, and a checklist to run before calling a composition finished.
+
+Every claim in it is asserted in `AuthoringGuideTests`, because a guide to *silent* behaviour is
+worthless the moment it goes stale — and it goes stale without anyone finding out.
+
 ### The compositions that ship
 
 Ten of them, in `compositions/`. Each is a working starting point and each exists to show one thing:

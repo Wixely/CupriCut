@@ -456,7 +456,35 @@ here would give CupriCut a designed starting point without designing one.
 | HyperShader transitions | **no equivalent** | Drop them, and say so rather than rendering something that silently lacks them. |
 | `autoAlpha` visibility juggling | **strip it** | It exists to work around their shader blanketing every scene to `opacity:0`. Carrying the workaround for a problem we do not have is worse than not carrying the feature. |
 
-30. **The prompt overlay — cheap, do it first.** Take the pack's spec and append a CupriFace section
+30. **The prompt overlay.** **Half done: the CupriFace half is [`docs/AUTHORING.md`](docs/AUTHORING.md).**
+    What remains is appending it to a particular pack's spec, which needs a pack in hand. The
+    document is the reusable part and it exists.
+
+    It was estimated at an hour and was worth much more, because writing it meant RE-MEASURING
+    rather than collecting — and the measuring found things.
+
+    **Three claims this repository believed were wrong.** `animation-timing-function` is NOT
+    ignored: `ease-out` puts a 10→300px width at 208px halfway, matching `cubic-bezier(0,0,.58,1)`
+    exactly. Reasoning about animated values as if they were linear is therefore wrong, and is how
+    `bar-race.html` came to declare its overtake six frames late. A comma-separated animation list
+    does not "run the first one" — it runs **neither**, because the shorthand fails to parse and is
+    dropped entirely, silently. And `line-height` now works in every unit.
+
+    **And one bug of CupriCut's own, worse than any of them.** Every `cupri-*` element rendered
+    **nothing**. A component expands only when the document has been given a `ComponentRegistry`,
+    and the rendering path never gave it one — so a component laid out at its CSS size, painted
+    nothing, settled cleanly and passed `lint`. The studio wired its own registry from the start,
+    so the window's controls worked and the gap stayed invisible. Meanwhile `lint` was telling
+    authors to replace `<img>` (CF0030) with `<cupri-image>` — correct advice, which then drew
+    nothing at all. **The one substitution the tool actively recommends was the one that did not
+    work.** One line in `OpenDocument`; all ten shipped compositions render byte-for-byte
+    identically either way, because none of them had ever been able to use a component.
+
+    The document's claims are asserted in `AuthoringGuideTests`, so it is a description of what
+    that file measures rather than prose about the engine. Three of the notes it replaced were true
+    of 0.25.0 and false by 0.25.1 with nothing saying so; that cannot happen silently again.
+
+    *The original plan for this item follows.* Take the pack's spec and append a CupriFace section
     that is explicitly labelled as OVERRIDING what came before it: no JavaScript and no GSAP, motion
     is `@keyframes` plus `animation-delay`, binding is `{{Path}}` and `data-repeat` and nothing else,
     no `pointer-events`, no `border-left/right/bottom`, no `letter-spacing`, no repeating gradients,

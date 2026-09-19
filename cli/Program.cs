@@ -162,8 +162,10 @@ public static class Program
         var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(folder, ".keep")))!;
         Directory.CreateDirectory(directory);
 
+        using var track = AudioTrack.For(cut, loaded, opts.Text("audio"), !opts.Has("no-audio"));
+
         var export = ExportFormats.Plan(wanted, opts.Has("alpha") ? true : null, defaults?.Alpha ?? false,
-            name => Path.Combine(directory, stem + "_" + name));
+            name => Path.Combine(directory, stem + "_" + name), track.Path);
 
         // export.Alpha rather than whatever Spec worked out from --alpha: the targets were built
         // against this value, and a render that disagreed would write a "mask" that was not one.
@@ -171,7 +173,8 @@ public static class Program
             loaded, Spec(opts, times, fps) with { Alpha = export.Alpha },
             export.Targets, fps, (int)opts.Number("workers", 0), cut.RenderLog);
 
-        Console.WriteLine($"{directory}  (alpha {(export.Alpha ? "on" : "off")})");
+        Console.WriteLine($"{directory}  (alpha {(export.Alpha ? "on" : "off")})"
+                          + (track.Any ? $", audio {track.Source}" : ""));
         for (var i = 0; i < export.Targets.Count; i++)
         {
             var video = videos[i];
@@ -372,10 +375,14 @@ public static class Program
             ? stem + codec.Extension
             : OutputNaming.File(stem, codec.Extension));
 
-        var (video, report) = encoder.Encode(loaded, Spec(opts, times, fps), path, codec, fps, alphaMode);
+        using var track = AudioTrack.For(cut, loaded, opts.Text("audio"), !opts.Has("no-audio"));
+
+        var (video, report) = encoder.EncodeFastest(loaded, Spec(opts, times, fps), path, codec, fps,
+            alphaMode, (int)opts.Number("workers", 0), cut.RenderLog, track.Path);
 
         Console.WriteLine($"{video.Path}  ({video.Bytes:N0} bytes, {video.Frames} frames, {video.Seconds:0.######}s, {codec.Name}, {video.PixelFormat})");
         if (video.Note is { Length: > 0 }) Console.WriteLine($"  {video.Note}");
+        if (track.Any) Console.WriteLine($"  audio: {track.Source}");
         ReportEvents(loaded, Path.GetDirectoryName(video.Path)!,
             Path.GetFileNameWithoutExtension(video.Path), fps, video.Seconds);
         ReportTiming(plan);

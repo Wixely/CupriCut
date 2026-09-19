@@ -449,10 +449,28 @@ events are.
     caption so it does not land on a cut, or picking the calm part of a shot to put text on. Same
     cue record, different source.
 
-29. **Audio on the way out.** `export` muxes the track into the clip — `-i audio -c:a aac -shortest`,
-    and a `--no-audio` for the matte half of a keying pair, which must not carry it. This is the
-    part of Phase 2's "audio mux here" that belongs with the rest of the audio work rather than
-    on its own.
+29. ~~**Audio on the way out.**~~ **Done.** `video` and `export` mux the project's track, or one
+    named on the call. `--no-audio` renders silent.
+
+    The item said "a `--no-audio` for the matte half of a keying pair", and that is the wrong shape:
+    it makes the caller responsible for remembering. A matte, a mask, a PNG sequence and a GIF can
+    never carry sound - a matte because it is half of a pair whose other half does, a GIF because
+    its container has no audio stream - so the TARGET decides and the flag is only for a caller who
+    wants silence anyway. One sweep of mp4 + mask + gif produces one file with audio and two
+    without, and the answer names which are which, because a silent half is exactly where correct
+    looks broken.
+
+    **Two things the item did not know, both found by running it rather than writing it:**
+
+    - `-c:a aac` is wrong for WebM, which accepts only Vorbis or Opus and refuses to write a header
+      at all. The audio codec is a property of the CONTAINER, so it lives on `VideoCodec` beside the
+      pixel format - `libopus` for WebM, `aac` for mp4 and mov, and null for GIF, which is also what
+      stops a GIF being offered one.
+    - A container that will not take the codec it was handed can refuse loudly, as WebM did, or drop
+      the stream and leave a silent file indistinguishable from a correct one. So the mux is
+      **verified**: the finished file is probed and a missing stream is an error naming the codec
+      and the container. The same rule alpha has followed since the beginning - validating the
+      request was never enough.
 
 **What has to be decided before the code.**
 

@@ -19,6 +19,11 @@ public sealed record ExportTarget(string Name, VideoCodec Codec, AlphaMode Alpha
     /// instead of reporting the size of whichever file the pattern happened to name.</summary>
     public string? Note { get; init; }
 
+    /// <summary>A track to mux in, or null. Per TARGET rather than per export, because one sweep
+    /// can produce an mp4 that should carry the sound and a mask that must not - see
+    /// <see cref="AudioTrack.Suits"/>.</summary>
+    public string? AudioPath { get; init; }
+
     /// <summary>True when <see cref="Path"/> is an ffmpeg output PATTERN rather than a file.</summary>
     public bool IsSequence => Path.Contains("%0", StringComparison.Ordinal);
 
@@ -148,8 +153,10 @@ public static class ExportFormats
     /// <param name="asked">What the caller said about alpha, if anything.</param>
     /// <param name="projectAlpha">What the project remembers.</param>
     /// <param name="place">Given a file name, where it should be written.</param>
+    /// <param name="audioPath">A track to mux into whichever targets can carry one. Applied
+    /// here rather than at each call site so that "a mask never carries sound" is decided once.</param>
     public static ExportPlan Plan(IReadOnlyList<string> formats, bool? asked, bool projectAlpha,
-        Func<string, string> place)
+        Func<string, string> place, string? audioPath = null)
     {
         var wanted = formats.Count > 0 ? formats : ["mp4"];
 
@@ -160,7 +167,16 @@ public static class ExportFormats
 
         // Every name is resolved before anything renders, so a format nobody can spell, or one that
         // cannot work with this alpha, fails at once rather than after the sweep.
-        return new ExportPlan(alpha, [.. wanted.Select(f => Resolve(f.Trim(), alpha, place))]);
+        var targets = wanted.Select(f => Resolve(f.Trim(), alpha, place));
+
+        if (audioPath is { Length: > 0 })
+        {
+            // Per target. One sweep can produce an mp4 that should carry the sound and the mask of
+            // the same composition, which must not - it is half of a pair whose other half has it.
+            targets = targets.Select(t => AudioTrack.Suits(t) ? t with { AudioPath = audioPath } : t);
+        }
+
+        return new ExportPlan(alpha, [.. targets]);
     }
 
     private static ArgumentException Unknown(string format) =>

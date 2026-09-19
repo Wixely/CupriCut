@@ -95,6 +95,7 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `inspect` | the timeline as data — tracks, windows, events, assets, and every font asked for | **in** |
 | `analyse_audio` | where the hits are in a track: onsets, a tempo grid, sound boundaries, a loudness envelope | **in** |
 | `attach_audio` | store those cues in a project, with the track and a hash of it | **in** |
+| `render_video` / `export` | …and mux it into the finished file, except where it does not belong | **in** |
 | `lint` | will it render the same somewhere else, and does it render what you meant | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
@@ -391,6 +392,26 @@ cue that moves by a frame between two machines is the class of bug this project 
 
 That twelve-second track is **2,830,778 bytes inlined in a `.cut.json` and 107,059 as a package** —
 which is what `--as hero.cutpkg` is for, and the moment a project first has a reason to become one.
+
+**And then it comes out in the render.** `video` and `export` mux the project's track into the
+file, or take one by name:
+
+```
+$ cupricut export --composition hero.cutpkg --formats mp4,mask,gif --alpha
+  mp4     hero_mp4.mp4    22,008 bytes  yuv420p     <- aac
+  mask    hero_mask.mp4    5,608 bytes  yuv420p     <- silent
+  gif     hero_gif.gif     4,620 bytes  bgra        <- silent
+```
+
+One sweep, three files, audio only where it belongs. **A matte or a mask never carries sound** — it
+is half of a pair whose other half does, and doubling the bytes would desynchronise whoever
+assembles them later. Nor does a GIF, whose container has no audio stream at all. The answer names
+which files got it and which did not, because a silent half is exactly where correct looks broken.
+`--no-audio` renders silent regardless.
+
+The audio codec follows the **container**, not a preference: WebM takes only Vorbis or Opus and
+refuses AAC outright. And the mux is **verified, not assumed** — the finished file is probed and a
+dropped stream is an error, the same rule alpha has followed from the start.
 
 **Read the confidence.** Beat detection is good on percussive material and unreliable on everything
 else, so below 0.35 no beats are emitted at all — only onsets and sound boundaries, which are the

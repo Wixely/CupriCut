@@ -50,6 +50,10 @@ public sealed record VideoResult(string Path, long Bytes, int Frames, double Fps
     /// <summary>The pixel format the finished file actually has - checked rather than assumed.</summary>
     public string? PixelFormat { get; init; }
 
+    /// <summary>What the muxed track actually came out as, read back off the file rather than
+    /// assumed from what was asked for. Null when the file carries no audio.</summary>
+    public string? AudioCodec { get; init; }
+
     /// <summary>How to use a matte, for a caller who now has a double-height video and needs to
     /// know why.</summary>
     public string? Note { get; init; }
@@ -180,7 +184,9 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
     {
         ["h264"] = new("h264", "libx264", "yuv420p", ".mp4", Alpha: false, ["-preset", "medium", "-crf", "18", "-movflags", "+faststart"]),
         ["h265"] = new("h265", "libx265", "yuv420p", ".mp4", Alpha: false, ["-preset", "medium", "-crf", "22", "-tag:v", "hvc1", "-movflags", "+faststart"]),
-        ["vp9"] = new("vp9", "libvpx-vp9", "yuva420p", ".webm", Alpha: true, ["-b:v", "0", "-crf", "30"]),
+        // libopus, not aac: WebM accepts only Vorbis or Opus, and ffmpeg refuses to write the
+        // header rather than transcoding for you.
+        ["vp9"] = new("vp9", "libvpx-vp9", "yuva420p", ".webm", Alpha: true, ["-b:v", "0", "-crf", "30"], AudioEncoder: "libopus"),
         ["prores"] = new("prores", "prores_ks", "yuva444p10le", ".mov", Alpha: true, ["-profile:v", "4444"]),
         // GIF needs a palette built from the actual frames, not a flat 256-colour conversion. The
         // split/palettegen/paletteuse graph is the difference between a 16 MB posterised mess and
@@ -190,7 +196,7 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         [
             "-filter_complex", "[0:v]split[a][b];[a]palettegen=stats_mode=diff[p];[b][p]paletteuse=dither=bayer:bayer_scale=3",
             "-loop", "0",
-        ]),
+        ], AudioEncoder: null),
     };
 
     /// <summary>The codec picked when the caller names none: h264 normally, and the first
@@ -234,6 +240,8 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
     /// that survives has something in it to survive.</para>
     /// </summary>
     /// <param name="pixelFormat">What ffprobe says the finished file is, when it got that far.</param>
+    /// <param name="audioCodec">What ffprobe says the muxed track ended up as, or null when the
+    /// file has no audio - which is correct for a matte, a mask, a GIF and a silent render.</param>
     public (bool Ok, string Detail) TryTinyEncode(VideoCodec codec, bool alpha, AlphaMode alphaMode, out string? pixelFormat)
     {
         pixelFormat = null;
@@ -369,10 +377,17 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
     /// </summary>
     public (VideoResult Video, SweepReport Sweep) EncodeFastest(
         Composition composition, SweepSpec spec, string outputPath, VideoCodec codec,
-        double outputFps, AlphaMode alphaMode, int workers, ILogger renderLog)
+        double outputFps, AlphaMode alphaMode, int workers, ILogger renderLog,
+        string? audioPath = null)
     {
-        var (videos, report) = ExportFastest(composition, spec,
-            [new ExportTarget(codec.Name, codec, alphaMode, outputPath)], outputFps, workers, renderLog);
+        var target = new ExportTarget(codec.Name, codec, alphaMode, outputPath);
+
+        // The same rule the multi-target path applies, so a single render of a mask does not
+        // acquire sound just for having come through a different door.
+        if (audioPath is { Length: > 0 } && AudioTrack.Suits(target))
+            target = target with { AudioPath = audioPath };
+
+        var (videos, report) = ExportFastest(composition, spec, [target], outputFps, workers, renderLog);
         return (videos[0], report);
     }
 
@@ -449,7 +464,8 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         {
             foreach (var target in targets)
             {
-                var args = BuildArguments(width, height, sweepFps, outputFps, target.Codec, target.Path, alpha, target.AlphaMode);
+                var args = BuildArguments(width, height, sweepFps, outputFps, target.Codec, target.Path,
+                    alpha, target.AlphaMode, target.AudioPath);
                 sinks.Add(FfmpegSink.Start(cut.Options.FfmpegPath, args, target.Name, target.Path, log));
             }
 
@@ -492,11 +508,26 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
                 if (alpha && target.AlphaMode == AlphaMode.Embedded && target.Codec.Alpha)
                     VerifyEmbeddedAlpha(target.Codec, actualFormat, target.Path);
 
+                // The same rule as alpha, for the same reason: validating the request was never
+                // enough. A container that will not take the audio codec it was handed can refuse
+                // loudly - which is how WebM-with-AAC was found - or drop the stream and leave a
+                // silent file that looks exactly like a correct one.
+                var actualAudio = target.AudioPath is { Length: > 0 } ? AudioCodecOf(target.Path) : null;
+
+                if (target.AudioPath is { Length: > 0 } && actualAudio is null)
+                {
+                    throw new InvalidOperationException(
+                        $"A track was muxed into {target.Name} ('{target.Path}') and the finished file has no "
+                        + $"audio stream - this ffmpeg dropped it. The {target.Codec.Extension} container was "
+                        + $"asked for {target.Codec.AudioEncoder}. {sinks[i].Tail()}");
+                }
+
                 results.Add(new VideoResult(target.Path, bytes, frames, outputFps,
                     frames / outputFps, target.Codec.Name, alpha)
                 {
                     AlphaMode = target.AlphaMode,
                     PixelFormat = actualFormat,
+                    AudioCodec = actualAudio,
                     Note = target.Note ?? MatteNote(alpha, target.AlphaMode),
                 });
             }
@@ -648,6 +679,24 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
         }
     }
 
+    /// <summary>The audio codec ffprobe reports for a finished file, or null when it has no audio
+    /// stream at all - which for a muxed target is a failure and for every other one is correct.</summary>
+    public string? AudioCodecOf(string path)
+    {
+        try
+        {
+            var probe = FfprobePath();
+            var output = Run(probe, $"-v error -select_streams a:0 -show_entries stream=codec_name -of csv=p=0 \"{path}\"", TimeSpan.FromSeconds(15));
+            var value = output.Split('\n', StringSplitOptions.RemoveEmptyEntries).FirstOrDefault()?.Trim();
+            return string.IsNullOrWhiteSpace(value) ? null : value;
+        }
+        catch (Exception ex)
+        {
+            log.LogDebug(ex, "ffprobe could not read the audio stream of {Path}", path);
+            return null;
+        }
+    }
+
     private string FfprobePath()
     {
         var ffmpeg = cut.Options.FfmpegPath;
@@ -657,7 +706,7 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
     }
 
     private static string BuildArguments(int width, int height, double inputFps, double outputFps,
-        VideoCodec codec, string output, bool alpha, AlphaMode mode)
+        VideoCodec codec, string output, bool alpha, AlphaMode mode, string? audioPath = null)
     {
         var args = new List<string>
         {
@@ -667,8 +716,21 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
             "-video_size", $"{width}x{height}",
             "-framerate", Rate(inputFps),
             "-i", "pipe:0",
-            "-an",
         };
+
+        // The track is a SECOND input, so it must be declared before any output option. With no
+        // track this stays -an, which is what it always was: an encoder fed raw frames has no
+        // audio to drop, and saying so keeps ffmpeg from looking for one.
+        var muxing = audioPath is { Length: > 0 } && codec.AudioEncoder is { Length: > 0 };
+        if (muxing)
+        {
+            args.Add("-i");
+            args.Add(Quote(audioPath!));
+        }
+        else
+        {
+            args.Add("-an");
+        }
 
         // Only ask for a rate conversion when the sweep rate and the output rate differ; otherwise
         // ffmpeg is told the same number twice and may drop a frame to honour it.
@@ -701,6 +763,31 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
 
         // The gif codec brings its own filter_complex; two of them cannot coexist.
         if (!matte || codec.Name != "gif") args.AddRange(codec.ExtraArgs);
+
+        if (muxing)
+        {
+            // The frames are mapped explicitly too. Without it ffmpeg picks one stream per type
+            // from the inputs by its own rules, and a filter_complex output means the rules do not
+            // pick the one that was just built.
+            if (!matte)
+            {
+                args.Add("-map");
+                args.Add("0:v:0");
+            }
+
+            args.Add("-map");
+            args.Add("1:a:0");
+            args.Add("-c:a");
+            args.Add(codec.AudioEncoder!);
+            args.Add("-b:a");
+            args.Add("192k");
+
+            // -shortest, so a track longer than the animation does not extend the clip with a
+            // still frame, and one shorter does not leave the end silent-but-running. The picture
+            // is the thing being made; the audio accompanies it.
+            args.Add("-shortest");
+        }
+
         args.Add(output);
 
         return string.Join(' ', args.Select(Quote));
@@ -749,10 +836,15 @@ public sealed class VideoEncoder(CupriCutService cut, ILogger<VideoEncoder> log)
 
 /// <summary>One offered codec: the name a caller uses, the ffmpeg encoder behind it, and whether it
 /// carries alpha.</summary>
+/// <param name="AudioEncoder">What to encode a muxed track with, or null when the container
+/// takes no audio at all. A CONTAINER property, not a preference: WebM accepts only Vorbis or
+/// Opus and rejects AAC outright, and GIF has no audio stream to put anything in. Discovered by
+/// exporting a keying pair and watching ffmpeg refuse to write the header.</param>
 public sealed record VideoCodec(
     string Name,
     string Encoder,
     string? PixelFormat,
     string Extension,
     bool Alpha,
-    IReadOnlyList<string> ExtraArgs);
+    IReadOnlyList<string> ExtraArgs,
+    string? AudioEncoder = "aac");

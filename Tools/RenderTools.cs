@@ -287,6 +287,8 @@ public static class RenderTools
         [Description("Background colour when alpha is false, e.g. '#101014'. Default white.")] string? background = null,
         [Description("Draw the elements marked --cupricut-background. False renders the same composition over nothing, which is what an edit wants; a composition that marks nothing is unaffected. Defaults to the project's own choice, or true.")] bool? showBackground = null,
         [Description("Render threads. 0 uses every core, which is the default; 1 forces the sequential path. Only a composition pure in t can be sharded - an impure one is swept in order whatever this says.")] int workers = 0,
+        [Description("Audio file to mux in, relative to a composition root. Defaults to the track attach_audio put in the project, when there is one. A matte or a mask never carries sound - it is half of a pair whose other half does.")] string? audio = null,
+        [Description("Render silent even if the project carries a track.")] bool noAudio = false,
         [Description("File name under the output root. The codec's own extension is used if none is given.")] string? output = null)
     {
         cut.EnsureVideoAllowed();
@@ -316,6 +318,8 @@ public static class RenderTools
         var file = OutputNaming.Explicit(output) ? stem + picked.Extension : OutputNaming.File(stem, picked.Extension);
         var path = cut.ResolveWrite(file);
 
+        using var track = AudioTrack.For(cut, loaded, audio, !noAudio);
+
         var (video, report) = encoder.EncodeFastest(
             loaded,
             new SweepSpec
@@ -333,7 +337,7 @@ public static class RenderTools
                 Alpha = alpha,
                 ShowBackground = showBackground,
             },
-            path, picked, rate, mode, workers, cut.RenderLog);
+            path, picked, rate, mode, workers, cut.RenderLog, track.Path);
 
         return JsonSerializer.Serialize(new
         {
@@ -349,6 +353,7 @@ public static class RenderTools
             pixelFormat = video.PixelFormat,
             note = video.Note,
             timing = Timing(plan),
+            audio = track.Any ? new { muxed = true, source = track.Source } : null,
             events = ToolSupport.Events(loaded, Path.GetDirectoryName(video.Path)!,
                 Path.GetFileNameWithoutExtension(video.Path), video.Fps, video.Seconds),
             backdrop = ToolSupport.Backdrop(loaded, showBackground),
@@ -393,6 +398,8 @@ public static class RenderTools
         [Description("Background colour when alpha is false, e.g. '#101014'. Default white.")] string? background = null,
         [Description("Draw the elements marked --cupricut-background. False renders the same composition over nothing, which is what an edit wants.")] bool? showBackground = null,
         [Description("Render threads. 0 uses every core, which is the default; 1 forces the sequential path.")] int workers = 0,
+        [Description("Audio file to mux in, relative to a composition root. Defaults to the track attach_audio put in the project, when there is one. A matte or a mask never carries sound - it is half of a pair whose other half does.")] string? audio = null,
+        [Description("Render silent even if the project carries a track.")] bool noAudio = false,
         [Description("Directory under the output root to write into. Default is the composition's name.")] string? outputDirectory = null)
     {
         cut.EnsureVideoAllowed();
@@ -418,8 +425,10 @@ public static class RenderTools
         var directory = Path.GetDirectoryName(cut.ResolveWrite(Path.Combine(folder, ".keep")))!;
         Directory.CreateDirectory(directory);
 
+        using var track = AudioTrack.For(cut, loaded, audio, !noAudio);
+
         var export = ExportFormats.Plan(formats ?? [], alpha, defaults?.Alpha ?? false,
-            name => Path.Combine(directory, stem + "_" + name));
+            name => Path.Combine(directory, stem + "_" + name), track.Path);
 
         var (videos, report) = encoder.ExportFastest(
             loaded,
@@ -460,6 +469,17 @@ public static class RenderTools
                 note = video.Note,
             }),
             timing = Timing(plan),
+            audio = track.Any
+                ? new
+                {
+                    muxed = true,
+                    source = track.Source,
+                    // Named, because a keying pair is exactly where a silent half is correct and
+                    // looks like a bug.
+                    into = export.Targets.Where(t => t.AudioPath is { Length: > 0 }).Select(t => t.Name),
+                    without = export.Targets.Where(t => t.AudioPath is null).Select(t => t.Name),
+                }
+                : null,
             events = ToolSupport.Events(loaded, directory, stem, rate, videos[0].Seconds),
             backdrop = ToolSupport.Backdrop(loaded, showBackground),
             cost = ToolSupport.Cost(report),

@@ -45,12 +45,31 @@ public sealed class CalibrationTests(ITestOutputHelper output)
         Assert.Contains("prores", report.ToTable(errorsOnly: false));
     }
 
+    /// <summary>Counts this machine can actually give, so the theory below is about PRECEDENCE
+    /// and not about how many cores the developer happens to have.
+    ///
+    /// <para>It was written with 4 and 8 in it, which passed on a 12-core laptop and failed on
+    /// CI's 4-core runner: <c>Resolve</c> clamps to <see cref="Environment.ProcessorCount"/> -
+    /// correctly, and there is a separate test for that - so a "calibrated 8" came back as 4 and
+    /// the rule under test was never reached. The first time this suite ever ran anywhere but
+    /// the machine it was written on, it said so.</para></summary>
+    public static TheoryData<int, int, int> Precedence()
+    {
+        var all = Environment.ProcessorCount;
+        var some = Math.Max(1, all / 2);
+
+        return new TheoryData<int, int, int>
+        {
+            // asked for, configured, expected
+            { some, 0, some },      // an explicit request wins
+            { some, all, some },    // ...even over a calibrated value
+            { 0, all, all },        // calibration beats the built-in guess
+            { 0, 0, -1 },           // nothing set: the guess
+        };
+    }
+
     [Theory]
-    // asked for, configured, expected
-    [InlineData(4, 0, 4)]        // an explicit request wins
-    [InlineData(4, 8, 4)]        // ...even over a calibrated value
-    [InlineData(0, 8, 8)]        // calibration beats the built-in guess
-    [InlineData(0, 0, -1)]       // nothing set: the guess
+    [MemberData(nameof(Precedence))]
     public void Workers_come_from_the_caller_then_calibration_then_the_guess(int requested, int configured, int expected)
     {
         var resolved = ParallelRenderer.Resolve(requested, configured);

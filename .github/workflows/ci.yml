@@ -42,6 +42,27 @@ jobs:
             --password "${{ secrets.GITHUB_TOKEN }}" \
             --store-password-in-clear-text
 
+      # Neither hosted image carries ffmpeg. Without it three tests fail with "Could not start
+      # ffmpeg at 'ffmpeg'" and - worse than the red build - the export path, which is the entire
+      # point of the tool, is proven nowhere except on a developer's laptop. The Docker image has
+      # carried ffmpeg from the start for the same reason.
+      - name: Install ffmpeg
+        shell: bash
+        run: |
+          if command -v ffmpeg >/dev/null 2>&1; then
+            echo "already on PATH: $(ffmpeg -version | head -1)"
+            exit 0
+          fi
+
+          if [ "$RUNNER_OS" = "Linux" ]; then
+            sudo apt-get update -qq
+            sudo apt-get install -y -qq ffmpeg
+          else
+            choco install ffmpeg --no-progress -y
+          fi
+
+          ffmpeg -version | head -1
+
       - name: Restore
         run: dotnet restore CupriCut.sln
 

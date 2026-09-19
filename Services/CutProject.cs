@@ -69,8 +69,12 @@ public sealed class CutProject
     /// HTML composition never accidentally parses as one.</summary>
     public const string Extension = ".cut.json";
 
+    /// <summary>Either shape counts. <c>.cut.json</c> is the plain one, readable and diffable and
+    /// right for everything without a payload in it; <c>.cutpkg</c> is the container, for a project
+    /// carrying audio or images - see <see cref="CutPackage"/>.</summary>
     public static bool IsProjectPath(string path) =>
-        path.EndsWith(Extension, StringComparison.OrdinalIgnoreCase);
+        path.EndsWith(Extension, StringComparison.OrdinalIgnoreCase)
+        || path.EndsWith(CutPackage.Extension, StringComparison.OrdinalIgnoreCase);
 
     public static CutProject Parse(string json, string path)
     {
@@ -92,6 +96,24 @@ public sealed class CutProject
     }
 
     public string ToJson() => JsonSerializer.Serialize(this, Json);
+
+    /// <summary>A copy whose <see cref="Assets"/> may be rewritten to point at package entries.
+    ///
+    /// <para>Shallow everywhere except the asset dictionary, which is the only thing packaging
+    /// touches - and a copy of it specifically so the caller's project does not come back with its
+    /// payloads replaced by paths. It is very likely about to be rendered.</para></summary>
+    public CutProject CloneForPackaging() => new()
+    {
+        FormatVersion = FormatVersion,
+        Name = Name,
+        Description = Description,
+        Html = Html,
+        Css = Css,
+        Render = Render,
+        Meta = Meta,
+        Annotations = Annotations,
+        Assets = new Dictionary<string, string>(Assets, StringComparer.Ordinal),
+    };
 }
 
 /// <summary>The arguments a render would otherwise have to be told every time.</summary>

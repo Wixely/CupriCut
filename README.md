@@ -324,6 +324,32 @@ and the file is what gets used later — and the thing acting on it is a program
 It also costs the render nothing: an event changes no rendering decision, so a composition that
 declares fifty of them is still pure in `t` and still renders every frame directly.
 
+### Two shapes for a project
+
+`.cut.json` is a project: HTML, CSS, the render settings, annotations, and any assets inlined as
+`data:` URIs — one readable, diffable file you can hand to another machine.
+
+That works until audio. Base64 adds a third to something already large, and four minutes of WAV
+inlined is a JSON file no editor will open. So there is a second shape:
+
+```
+hero.cutpkg                     a zip
+├── project.json                the same schema, assets pointing at entries
+└── assets/
+    └── theme.mp3               stored as bytes
+```
+
+**The manifest is the same format.** Loading either produces the same object, so nothing
+downstream — render, `lint`, the studio, annotations — knows or cares which it came from. There is
+a test that renders both and compares the pixels.
+
+**The extension decides, never a size.** `hero.cut.json` writes JSON; `hero.cutpkg` writes a
+package. An automatic switch past some megabyte count would be a threshold nobody can see. A
+package is also read for what it *is* rather than what it is called, so a renamed one still opens.
+
+Measured on a 200 KB incompressible payload: **267 KB as JSON, 201 KB as a package** — the base64
+tax gone, and already-compressed formats stored rather than pointlessly deflated.
+
 ### Timing motion to a track
 
 ```

@@ -73,7 +73,12 @@ public static partial class CompositionLoader
         var full = allow(path);
         if (!File.Exists(full)) throw new FileNotFoundException($"No composition at '{path}'.", full);
         return CutProject.IsProjectPath(full)
-            ? FromProject(CutProject.Parse(File.ReadAllText(full), full), full)
+            // Read for what it IS. A project is stored either as JSON or as a package, and this is
+            // the door every render tool comes through - it must not be the one that only knows
+            // about half the format.
+            ? FromProject(CutPackage.LooksLikePackage(full)
+                ? CutPackage.Read(full, full)
+                : CutProject.Parse(File.ReadAllText(full), full), full)
             : FromHtml(full, allow);
     }
 

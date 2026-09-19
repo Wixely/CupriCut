@@ -186,8 +186,18 @@ public sealed class CupriCutService
 
     /// <summary>Read a project back whole - the call a second run makes when it has nothing but the
     /// name.</summary>
-    public CutProject LoadProject(string name) =>
-        CutProject.Parse(File.ReadAllText(ResolveProject(name, forWriting: false)), name);
+    /// <summary>Read a project, whichever of the two shapes it is stored in.
+    ///
+    /// <para>Sniffed rather than trusted to its name: a package renamed to <c>.cut.json</c> still
+    /// opens, because what a file IS is more reliable than what someone called it.</para></summary>
+    public CutProject LoadProject(string name)
+    {
+        var path = ResolveProject(name, forWriting: false);
+
+        return CutPackage.LooksLikePackage(path)
+            ? CutPackage.Read(path, name)
+            : CutProject.Parse(File.ReadAllText(path), name);
+    }
 
     /// <summary>Write a project, stamping when and by which engine.</summary>
     public string SaveProject(string name, CutProject project)
@@ -195,7 +205,12 @@ public sealed class CupriCutService
         var path = ResolveProject(name, forWriting: true);
         project.Meta.Updated = DateTimeOffset.UtcNow;
         project.Meta.Engine ??= EngineVersion;
-        File.WriteAllText(path, project.ToJson());
+
+        // The EXTENSION decides, never a size. Switching format automatically past some megabyte
+        // count would be a threshold nobody can see, which is the thing that made every other
+        // answer to "where does the audio live" a bad one.
+        if (CutPackage.IsPackagePath(path)) CutPackage.Write(path, project);
+        else File.WriteAllText(path, project.ToJson());
         _log.LogInformation("Saved project {Path} ({Bytes} bytes)", path, new FileInfo(path).Length);
         return path;
     }
@@ -204,7 +219,8 @@ public sealed class CupriCutService
     public IReadOnlyList<string> ListProjects()
     {
         var root = ProjectRoot;
-        return [.. Directory.EnumerateFiles(root, "*" + CutProject.Extension, SearchOption.AllDirectories)
+        return [.. Directory.EnumerateFiles(root, "*", SearchOption.AllDirectories)
+            .Where(CutProject.IsProjectPath)
             .Select(p => Path.GetRelativePath(root, p).Replace('\\', '/'))
             .Order(StringComparer.Ordinal)];
     }

@@ -42,6 +42,7 @@ public static class Program
                 "inspect" => Inspect(cut, opts),
                 "lint" => Lint(cut, opts),
                 "audio" => Audio(cut, opts),
+                "footage" => Footage(cut, opts),
                 "calibrate" => Calibrate(cut, encoder, opts),
                 "fonts" => Fonts(cut, opts),
                 "projects" => Projects(cut),
@@ -307,6 +308,40 @@ public static class Program
             Console.WriteLine($"  {c.At,8:0.###}s {c.Frame,6}  {c.Kind,-10}  {c.Strength,8:0.00}"
                               + $"  {c.SnapMs,+6:0.#}ms");
         }
+
+        return 0;
+    }
+
+    /// <summary>Where the cuts are in a piece of footage, and where it is calm enough for text.</summary>
+    private static int Footage(CupriCutService cut, CommandLine opts)
+    {
+        cut.EnsureVideoAllowed();
+
+        var fps = opts.Number("fps", cut.Options.DefaultFps);
+        var path = cut.ResolveRead(opts.Require("video"));
+        var analysis = VideoCues.Analyse(
+            cut.Options.FfmpegPath, path, fps, opts.Number("max-seconds", 1800));
+
+        Console.WriteLine($"{analysis.Source}  {analysis.Seconds:0.###}s at {analysis.Fps:0.##} fps "
+                          + $"({analysis.Motion.Count} frames)");
+        Console.WriteLine($"  {analysis.Count(CueKind.SceneChange)} cut(s), "
+                          + $"average motion {analysis.Motion.DefaultIfEmpty(0).Average():0.000}, "
+                          + $"average luminance {analysis.Luminance.DefaultIfEmpty(0).Average():0.000}");
+
+        if (opts.Number("calm", 0) is > 0 and var window)
+        {
+            var (at, motion) = analysis.CalmestWindow(window);
+            Console.WriteLine();
+            Console.WriteLine(at < 0
+                ? $"CALM  the footage is shorter than the {window:0.##}s asked for"
+                : $"CALM  start a {window:0.##}s caption at {at:0.###}s (frame {(int)Math.Round(at * analysis.Fps)}), "
+                  + $"motion {motion:0.000} - no cut inside it");
+        }
+
+        Console.WriteLine();
+        Console.WriteLine("      time  frame   strength");
+        foreach (var c in analysis.Of(CueKind.SceneChange))
+            Console.WriteLine($"  {c.At,8:0.###}s {c.Frame,6}   {c.Strength,8:0.00}");
 
         return 0;
     }

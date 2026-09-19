@@ -372,7 +372,7 @@ built on, so it goes first.
     asserts exactly that, because it is the whole difference between this feature and the one that
     was dropped.
 
-## Milestone 4 — cue the animation off the audio (4–5 days)
+## Milestone 4 — cue the animation off the audio ~~(4–5 days)~~ **done**
 
 **The idea.** Point CupriCut at an audio file and let the motion be driven by what is in it — hits
 on the beat, a title that lands on the downbeat, a lower third that appears when the speaker starts.
@@ -432,22 +432,37 @@ events are.
 
     The hash is what catches the audio being swapped underneath a project that was timed to it.
 
-27. **Two ways to use them, and the cheap one first.**
+27. **Two ways to use them, and the cheap one first.** **The cheap one is done and the expensive one
+    is not being built.**
 
-    **The agent writes the keyframes.** `analyse_audio` hands back a list of times; the agent emits
-    `@keyframes` and `animation-delay` at those times. This needs no engine change, no new binding
-    vocabulary, and nothing in the renderer — and it plays to what is actually good at authoring
-    motion. Build this one first and find out whether the second is needed at all.
+    The agent asks for the cues and writes the keyframes. That needed no engine change, no binding
+    vocabulary and nothing in the renderer, and it works.
 
-    **A cue track binds directly.** `data-cut-cue="beat"` / `data-cut-cue-index="4"` resolved to a
-    time at build, feeding the same `animation-delay` machinery Milestone 2 uses for
-    `data-start`. Worth it only if the round trip through the agent turns out to be the slow part.
+    `data-cut-cue` was to be built "only if the round trip through the agent turns out to be the
+    slow part". Nothing suggests it is: the cues are stored in the project after one analysis, so
+    the round trip happens once and not per iteration. Building it now would be adding a second way
+    to express timing - one in the markup and one in whatever wrote the markup - for a problem
+    nobody has. Left here, with its reason, the way the interaction track was.
 
-28. **Cues from the FRAMES too.** The same shape of answer, read off a video the composition is
-    meant to sit over: scene changes (`ffmpeg`'s `scdet`), and a per-frame motion and luminance
-    measure. What this is for is the opposite problem — not timing motion to music, but timing a
-    caption so it does not land on a cut, or picking the calm part of a shot to put text on. Same
-    cue record, different source.
+28. ~~**Cues from the FRAMES too.**~~ **Done.** `analyse_video` / `cupricut footage`: scene
+    changes, per-frame motion and per-frame luminance, as the same `Cue` record so nothing acting
+    on a time and a frame number needs a second vocabulary.
+
+    **Not `scdet`.** The item named it, and it is the wrong choice for the same reason a DSP library
+    would have been: a filter whose threshold behaviour changes between builds makes a render
+    irreproducible. ffmpeg decodes to **32x18 greyscale** and the rest is arithmetic here - mean
+    luminance, mean absolute difference for motion, and the same adaptive peak-picking the audio
+    onsets use. At 576 pixels a cut still changes nearly every value at once while a pan, however
+    fast, changes them gradually; and discarding the detail removes exactly the grain and
+    compression noise that makes full-resolution differencing jumpy. A ten-minute clip is a few
+    megabytes rather than several gigabytes.
+
+    **`CalmestWindow` is the item's real point, asked directly.** "Picking the calm part of a shot
+    to put text on" is not a cue, it is a question - *where do I put a caption that is on screen for
+    N seconds?* - so it is a method that answers it. It **refuses to straddle a cut**: a window
+    either side of one averages two shots and can score beautifully while being the worst possible
+    placement, because the caption would begin over one shot and end over another. A cut is allowed
+    to be the window's first frame, which is exactly where a caption belongs.
 
 29. ~~**Audio on the way out.**~~ **Done.** `video` and `export` mux the project's track, or one
     named on the call. `--no-audio` renders silent.

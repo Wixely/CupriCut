@@ -5,7 +5,8 @@ using ModelContextProtocol.Server;
 
 namespace CupriCut.Tools;
 
-/// <summary>Where the hits are in a track, so motion can be written onto them.</summary>
+/// <summary>Where the moments are - in a track, so motion can be written onto them, and in
+/// footage, so words are not written over the wrong part of it.</summary>
 [McpServerToolType]
 public static class AudioTools
 {
@@ -161,6 +162,89 @@ public static class AudioTools
             next = analysis.Tempo.Usable
                 ? "load_project returns these cues from now on. Write animation-delay at the times below."
                 : "No usable beat - time to the onsets and sound boundaries, which are the dependable half.",
+        }, JsonOpts.Default);
+    }
+
+    [McpServerTool(Name = "analyse_video"),
+     Description("""
+        Read a piece of FOOTAGE the composition will sit over, and report where its cuts are, how
+        much each frame moves, and how bright it is.
+
+        The opposite problem to analyse_audio. That one times motion to music; this one keeps a
+        caption from landing on a cut and finds the part of a shot still enough to read text over.
+        Same cue shape - a time and the frame it lands on - so nothing new to learn.
+
+        calmWindow asks the useful question directly: "where do I put a caption that is on screen
+        for N seconds?" It answers with a start time and how much the picture moves there, and it
+        will never pick a window that straddles a cut, because a caption that begins over one shot
+        and ends over another is worse than one placed badly.
+
+        Use luminance to decide whether the text over it should be light or dark. Cues are snapped
+        to the rate you ask for, since a frame is the smallest thing a render has.
+        """)]
+    public static string AnalyseVideo(
+        CupriCutService cut,
+        [Description("Video file, relative to a composition root. Any format ffmpeg reads.")]
+        string video,
+        [Description("Frame rate to sample and snap to. Defaults to the configured rate.")]
+        double fps = 0,
+        [Description("Ask where to put a caption this many seconds long. 0 to skip.")]
+        double calmWindow = 0,
+        [Description("Include the per-frame motion and luminance envelopes. Long, so off unless asked for.")]
+        bool envelopes = false,
+        [Description("Stop after this many seconds of footage.")]
+        double maxSeconds = 1800)
+    {
+        cut.EnsureVideoAllowed();
+
+        var rate = fps > 0 ? fps : cut.Options.DefaultFps;
+        var path = cut.ResolveRead(video);
+        var analysis = VideoCues.Analyse(cut.Options.FfmpegPath, path, rate, maxSeconds);
+
+        var calm = calmWindow > 0 ? analysis.CalmestWindow(calmWindow) : (At: -1.0, Motion: 0.0);
+
+        return JsonSerializer.Serialize(new
+        {
+            source = analysis.Source,
+            seconds = analysis.Seconds,
+            fps = analysis.Fps,
+            frames = analysis.Motion.Count,
+
+            cuts = analysis.Of(CueKind.SceneChange).Select(c => new
+            {
+                at = c.At,
+                frame = c.Frame,
+                strength = c.Strength,
+            }),
+
+            calm = calmWindow <= 0 ? null : calm.At < 0
+                ? new
+                {
+                    found = false,
+                    note = $"The footage is shorter than the {calmWindow}s window asked for.",
+                    at = (double?)null,
+                    frame = (int?)null,
+                    motion = (double?)null,
+                }
+                : new
+                {
+                    found = true,
+                    note = "Start a caption of this length here. The window contains no cut.",
+                    at = (double?)calm.At,
+                    frame = (int?)(int)Math.Round(calm.At * analysis.Fps),
+                    motion = (double?)calm.Motion,
+                },
+
+            // Averages, so an answer that omits the envelopes still says something useful about
+            // the whole clip.
+            average = new
+            {
+                motion = analysis.Motion.Count == 0 ? 0 : Math.Round(analysis.Motion.Average(), 4),
+                luminance = analysis.Luminance.Count == 0 ? 0 : Math.Round(analysis.Luminance.Average(), 4),
+            },
+
+            motion = envelopes ? analysis.Motion : null,
+            luminance = envelopes ? analysis.Luminance : null,
         }, JsonOpts.Default);
     }
 

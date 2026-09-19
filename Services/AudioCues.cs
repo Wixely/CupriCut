@@ -19,6 +19,12 @@ public enum CueKind
 
     /// <summary>Sound stops.</summary>
     SoundEnd,
+
+    /// <summary>A cut in a piece of FOOTAGE - the picture changing all at once. Read by
+    /// <see cref="VideoCues"/> rather than from audio, and here rather than in its own enum
+    /// because a caller acting on a time and a frame number should not need a second vocabulary
+    /// for the second source.</summary>
+    SceneChange,
 }
 
 /// <summary>One moment in a track worth timing something to.</summary>

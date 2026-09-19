@@ -96,6 +96,8 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `analyse_audio` | where the hits are in a track: onsets, a tempo grid, sound boundaries, a loudness envelope | **in** |
 | `attach_audio` | store those cues in a project, with the track and a hash of it | **in** |
 | `render_video` / `export` | …and mux it into the finished file, except where it does not belong | **in** |
+| `analyse_video` | where the cuts are in footage, and where it is calm enough to put words over | **in** |
+| `analyse_video` | where the cuts are in footage, and where it is calm enough to put words over | **in** |
 | `lint` | will it render the same somewhere else, and does it render what you meant | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
@@ -422,6 +424,66 @@ a least-squares fit, about 400 lines. Not to avoid a dependency for its own sake
 library whose version changes the answer makes a render irreproducible in exactly the way this
 project refuses everywhere else. ffmpeg does the decoding, since it is already here and already
 reads everything.
+
+### Reading the footage underneath
+
+The opposite problem to timing motion to music: keeping a caption off a cut.
+
+```
+$ cupricut footage --video clip.mp4 --calm 1.5
+clip.mp4  7s at 30 fps (210 frames)
+  2 cut(s), average motion 0.005, average luminance 0.234
+
+CALM  start a 1.5s caption at 0s (frame 0), motion 0.000 - no cut inside it
+
+      time  frame   strength
+         2s     60       1.00
+         5s    150       0.92
+```
+
+Same cue shape as the audio — a time and the frame it lands on — so nothing acting on one needs to
+learn a second vocabulary. `--calm N` asks the question you actually have: *where do I put a caption
+that is on screen for N seconds?* **It will never answer with a window that straddles a cut**, since
+a caption that begins over one shot and ends over another is worse than one placed badly.
+
+Luminance comes back too, for deciding whether the text over it should be light or dark.
+
+Measured in-process from **32×18 greyscale frames** — ffmpeg decodes, everything else is arithmetic
+here. Not ffmpeg's own `scdet`, for the reason the audio analysis is in-process too: a filter whose
+threshold behaviour changes between builds makes a render irreproducible. At 576 pixels a cut still
+changes nearly everything at once while a pan, however fast, changes it gradually — and throwing
+the detail away removes exactly the grain and compression noise that makes full-resolution
+differencing jumpy.
+
+### Reading the footage underneath
+
+The opposite problem to timing motion to music: keeping a caption off a cut.
+
+```
+$ cupricut footage --video clip.mp4 --calm 1.5
+clip.mp4  7s at 30 fps (210 frames)
+  2 cut(s), average motion 0.005, average luminance 0.234
+
+CALM  start a 1.5s caption at 0s (frame 0), motion 0.000 - no cut inside it
+
+      time  frame   strength
+         2s     60       1.00
+         5s    150       0.92
+```
+
+Same cue shape as the audio — a time and the frame it lands on — so nothing acting on one needs to
+learn a second vocabulary. `--calm N` asks the question you actually have: *where do I put a caption
+that is on screen for N seconds?* **It will never answer with a window that straddles a cut**, since
+a caption that begins over one shot and ends over another is worse than one placed badly.
+
+Luminance comes back too, for deciding whether the text over it should be light or dark.
+
+Measured in-process from **32×18 greyscale frames** — ffmpeg decodes, everything else is arithmetic
+here. Not ffmpeg's own `scdet`, for the reason the audio analysis is in-process too: a filter whose
+threshold behaviour changes between builds makes a render irreproducible. At 576 pixels a cut still
+changes nearly everything at once while a pan, however fast, changes it gradually — and throwing
+the detail away removes exactly the grain and compression noise that makes full-resolution
+differencing jumpy.
 
 ### Projects live in folders
 

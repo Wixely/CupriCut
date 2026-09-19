@@ -206,9 +206,18 @@ an opaque clip to review and a transparent one to key.
 installed is an **error naming the family**, not a silent substitution — that is the difference
 between a render CI reproduces and one it merely resembles.
 
-Name a family that is registered, or put the face in a `Cut:FontDirectories` folder. `cupricut
-inspect` lists every family the composition asked for and what answered it; `CUT001` warns when the
-machine answered.
+Three ways to register a face, and all three satisfy the strict policy:
+
+- put it in a `Cut:FontDirectories` folder — how the shipped Noto Sans arrives;
+- `@font-face { font-family: "X"; src: url('face.ttf'); }` in a composition beside the file;
+- **carry it in the project**: `attach_asset` inlines the file, and a project's `url('face.ttf')`
+  is rewritten to point at what it inlined. The face then travels with the `.cutpkg` and resolves
+  as `Registered` — so a project that uses a non-stock typeface is still one file you can hand to
+  another machine. Store it as a `.cutpkg` rather than a `.cut.json`: 631 KB of TTF is 842 KB once
+  base64'd.
+
+`cupricut inspect` lists every family the composition asked for and what answered it; `CUT001`
+warns when the machine answered.
 
 Always set a family explicitly on `body, html` — every shipped composition starts with
 `body, html { font-family: "Noto Sans"; }`.

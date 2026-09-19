@@ -728,9 +728,23 @@ composition for a declaration it does not have (see the table above).
   which is the actual risk), `SettleTimeoutSeconds` **15**, `MaxInlineImageBytes` **4000000** (over
   it, a tool writes the PNG and returns the path rather than filling a context with base64).
 - **Where the sweep cache lives, if one ever exists.** Milestone 3 note only — replay first.
-- **Whether a project may embed a font.** Assets inline as `data:` URIs today, which would work for
-  a font too — but `FontPolicy.RegisteredOnly` reads faces from `Cut:FontDirectories`, not from the
-  document, so an embedded font needs `@font-face` to be the registration path. Decide with M2.
+- ~~**Whether a project may embed a font.**~~ **It may, and it already did.** Measured rather than
+  designed: the engine registers a family from an `@font-face` whose `src` is a `data:` URI, and
+  `attach_asset` already rewrites `url('name')` in a project's CSS to whatever that asset holds. So
+  `attach_asset` plus three lines of CSS is the entire feature, and the face resolves as
+  **`Registered`** with `IsDeterministic` true — not as a platform substitution.
+
+  **No code was written.** `EmbeddedFontTests` is what stops it being lost, and it is deliberately
+  run against a service with *no* font directory, so the embedded face is the only thing that could
+  answer — a test that left the shipped Noto Sans in place would pass whether `@font-face` worked
+  or not. The paired test asserts the *absence* of the asset is refused by name rather than
+  substituted, which is what proves the first one is not passing by accident.
+
+  This mattered because a `.cutpkg` is "one file you can hand to another machine" and that promise
+  was only as good as the fonts: had it not worked, every project using a non-stock typeface was
+  quietly machine-dependent. The container earns its keep here too — 631 KB of TTF is 842 KB once
+  base64'd, so a package is what makes carrying a typeface reasonable rather than doubling the
+  project.
 
 ## Risks to keep in view
 

@@ -269,6 +269,34 @@ public static class Program
             ? analysis.Cues.Where(c => c.Kind.ToString().Equals(kind.Replace("-", ""), StringComparison.OrdinalIgnoreCase))
             : analysis.Cues;
 
+        // --project stores the cues rather than only printing them, which is the difference
+        // between looking at a track and timing something to it.
+        if (opts.Text("project") is { Length: > 0 } project)
+        {
+            var loaded = cut.LoadProject(project);
+            var embed = !opts.Has("no-embed");
+
+            // --as moves the project as it saves it, which is how a .cut.json that predates the
+            // container becomes a .cutpkg at the moment it first has a reason to be one.
+            var target = opts.Text("as") is { Length: > 0 } renamed ? renamed : project;
+
+            if (embed)
+            {
+                var key = Path.GetFileName(path);
+                loaded.Assets[key] = $"data:{CutPackage.MediaTypeOf(path)};base64,"
+                                     + Convert.ToBase64String(File.ReadAllBytes(path));
+                loaded.Audio = ProjectAudio.From(analysis, AudioDecoder.Hash(path), key);
+            }
+            else
+            {
+                loaded.Audio = ProjectAudio.From(analysis, AudioDecoder.Hash(path), null);
+            }
+
+            var saved = cut.SaveProject(target, loaded);
+            Console.WriteLine($"  stored in {saved} ({new FileInfo(saved).Length:N0} bytes"
+                              + $"{(embed ? ", track included" : ", cues only")})");
+        }
+
         Console.WriteLine();
         Console.WriteLine("      time  frame   kind        strength  snap");
         foreach (var c in cues)

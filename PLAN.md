@@ -407,8 +407,22 @@ events are.
     downbeat carrying real energy. The test tolerance was 4% and passed the broken version; it is
     0.5% now, because a tolerance loose enough to pass a wrong answer is not a test.
 
-26. **Cues live in the project.** *(Next. Needs the storage decision in the table below settled
-    first - the analysis does not depend on it, which is why it was built first.)*
+26. ~~**Cues live in the project.**~~ **Done.** `attach_audio` analyses once and writes the result
+    into the project: the cues, the tempo and its confidence, a hash of the file, and - unless told
+    otherwise - the track itself. `load_project` hands them back for free from then on.
+
+    The hash earns its place immediately: replacing the track without re-reading it is reported as
+    **CUT008**, rather than being discovered when an animation no longer lands on anything. Cues
+    kept *without* the track are not warned about - that is a legitimate choice (enough to animate,
+    not enough to mux) and only unverifiable, not wrong.
+
+    The rate defaults to the PROJECT's, not a global one, because a cue is only actionable at the
+    rate it was snapped to.
+
+    `--as` / `saveAs` moves a project as it saves it, which is the only way one that predates the
+    container becomes a package - and the moment it first has a reason to is exactly this one.
+    Measured on a twelve-second WAV: **2,830,778 bytes inlined in a `.cut.json`, 107,059 as a
+    `.cutpkg`.**
 
     Stored in `.cut.json` alongside a hash of the audio, not
     recomputed at render time. Two reasons. A render must be reproducible on a machine that has a

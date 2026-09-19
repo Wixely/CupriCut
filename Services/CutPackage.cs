@@ -170,7 +170,7 @@ public static class CutPackage
     // application/octet-stream, which is honest rather than a guess.
     private static readonly (string Media, string Ext)[] Types =
     [
-        ("image/png", ".png"), ("image/jpeg", ".jpg"), ("image/gif", ".gif"),
+        ("image/png", ".png"), ("image/jpeg", ".jpg"), ("image/jpeg", ".jpeg"), ("image/gif", ".gif"),
         ("image/webp", ".webp"), ("image/svg+xml", ".svg"), ("image/avif", ".avif"),
         ("font/woff2", ".woff2"), ("font/woff", ".woff"), ("font/ttf", ".ttf"), ("font/otf", ".otf"),
         ("audio/mpeg", ".mp3"), ("audio/wav", ".wav"), ("audio/x-wav", ".wav"),
@@ -181,7 +181,10 @@ public static class CutPackage
     private static string ExtensionFor(string mediaType) =>
         Types.FirstOrDefault(t => string.Equals(t.Media, mediaType, StringComparison.OrdinalIgnoreCase)).Ext ?? ".bin";
 
-    private static string MediaTypeOf(string entry)
+    /// <summary>The media type for a path or entry, by extension. Public because it is the only
+    /// complete table in the codebase: packaging cannot round-trip without it, so it is the copy
+    /// that stays right, and a second one in a tool would be the one quietly missing audio.</summary>
+    public static string MediaTypeOf(string entry)
     {
         var ext = Path.GetExtension(entry);
         return Types.FirstOrDefault(t => string.Equals(t.Ext, ext, StringComparison.OrdinalIgnoreCase)).Media

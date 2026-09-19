@@ -94,6 +94,7 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `list_formats` | what each format gives you, for choosing between them | **in** |
 | `inspect` | the timeline as data — tracks, windows, events, assets, and every font asked for | **in** |
 | `analyse_audio` | where the hits are in a track: onsets, a tempo grid, sound boundaries, a loudness envelope | **in** |
+| `attach_audio` | store those cues in a project, with the track and a hash of it | **in** |
 | `lint` | will it render the same somewhere else, and does it render what you meant | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
@@ -372,6 +373,24 @@ reach its frame is reported rather than absorbed, the same rule clip lengths alr
 **The agent writes the keyframes.** There is no `data-cut-cue` binding and there may never need to
 be: the round trip through whatever is composing is already short, and it keeps the timing where
 the judgement is. Ask for the cues, write the delays.
+
+**Do it once.** `attach_audio` stores the cues in the project along with the track and a hash of
+it, so `load_project` hands them back for free from then on:
+
+```
+$ cupricut audio --audio theme.wav --project hero --as hero.cutpkg
+  stored in .../projects/hero.cutpkg (107,059 bytes, track included)
+```
+
+Stored rather than re-read for the same reason everything else here is pinned: a render has to be
+reproducible on a machine with a different ffmpeg, and audio analysis drifts between versions — a
+cue that moves by a frame between two machines is the class of bug this project exists to avoid.
+
+**The hash is why storing it is safe.** Replace the track without re-reading it and `lint` says so
+(`CUT008`), instead of you finding out when an animation no longer lands on anything.
+
+That twelve-second track is **2,830,778 bytes inlined in a `.cut.json` and 107,059 as a package** —
+which is what `--as hero.cutpkg` is for, and the moment a project first has a reason to become one.
 
 **Read the confidence.** Beat detection is good on percussive material and unreliable on everything
 else, so below 0.35 no beats are emitted at all — only onsets and sound boundaries, which are the

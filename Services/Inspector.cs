@@ -93,6 +93,9 @@ public static partial class Inspector
     /// <summary>A declared event that cannot be read, or that nothing will ever reach.</summary>
     public const string EventProblem = "CUT007";
 
+    /// <summary>Stored cues that no longer describe the track they were read from.</summary>
+    public const string StaleAudio = "CUT008";
+
     public static Examination Examine(CupriCutService cut, string path)
     {
         var loaded = Timeline.Apply(cut.LoadComposition(path));
@@ -129,6 +132,32 @@ public static partial class Inspector
             loaded.Path, width, height, fps, duration, timeline, events,
             loaded.Backdrops, loaded.Stylesheets, [.. loaded.References.Distinct()],
             report.RegisteredFamilies, fonts, settled, doc.PendingLoads, purity, findings);
+    }
+
+    /// <summary>Whether a project's stored cues still describe the track it carries.
+    ///
+    /// <para>Only checkable when the track was embedded: cues kept without one are not wrong, just
+    /// unverifiable, and warning about them would be warning about a choice rather than a
+    /// mistake.</para></summary>
+    private static IEnumerable<Finding> StaleCues(CutProject? project)
+    {
+        if (project?.Audio is not { Asset: { Length: > 0 } key } audio) yield break;
+        if (!project.Assets.TryGetValue(key, out var uri)) yield break;
+
+        var comma = uri.IndexOf(',');
+        if (comma < 0 || !uri.StartsWith("data:", StringComparison.OrdinalIgnoreCase)) yield break;
+
+        byte[] bytes;
+        try { bytes = Convert.FromBase64String(uri[(comma + 1)..]); }
+        catch (FormatException) { yield break; }
+
+        var actual = Convert.ToHexString(System.Security.Cryptography.SHA256.HashData(bytes)).ToLowerInvariant();
+        if (string.Equals(actual, audio.Sha256, StringComparison.OrdinalIgnoreCase)) yield break;
+
+        yield return new Finding(FindingLevel.Warning, StaleAudio,
+            $"The cues stored for '{audio.Source}' were read from a different file than the '{key}' "
+            + "this project carries now - the track was replaced after it was analysed.",
+            "Run attach_audio again to re-read the cues, or put back the track they were timed to.");
     }
 
     private static List<Finding> Collect(
@@ -185,6 +214,12 @@ public static partial class Inspector
         // values - two of them moved a bar's final width from 545px to 714px, and nothing anywhere
         // said so. CupriFace#184,
         // and it is worth a warning precisely because commenting your keyframes is normal practice.
+        // The cues are stored so they need not be recomputed; the hash is stored so that storing
+        // them cannot quietly become a lie. Replacing the track without re-reading it would
+        // otherwise be found out by an animation that no longer lands on anything, which is the
+        // worst possible moment to find it out.
+        foreach (var stale in StaleCues(loaded.Project)) findings.Add(stale);
+
         foreach (var problem in events.Problems)
             findings.Add(new Finding(FindingLevel.Warning, EventProblem, problem));
 

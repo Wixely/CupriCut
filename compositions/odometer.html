@@ -1,0 +1,173 @@
+<!--
+  A rolling counter. Five digits, each one a strip that spins to a stop.
+
+  What this one is for: THE COMPOSITION THAT COULD NOT BE WRITTEN. It was abandoned twice. The
+  digits landed a full cell BELOW the window meant to show them, which looked like `overflow: hidden`
+  failing to clip - and the conclusion drawn at the time, that clipping was broken, was wrong. The
+  cause was `line-height`: a px value produced a line box three times too tall, so every digit sat
+  at the bottom of a cell three times the height it was given. Fixed in CupriFace 0.25.1
+  (CupriFace#181), and this is the first composition that needed it.
+
+  How it works: each column is a strip of digits inside a window exactly one cell tall, and the
+  strip is moved by `transform: translateY`. Transform is one of the four things that animate here -
+  `top` and `margin-top` do nothing at all, silently, which is the trap this would otherwise fall
+  into. `overflow: hidden` on the window does the rest, and it does clip.
+
+  Every column carries one full rotation before it lands, so a digit ending on 1 still reads as
+  counting rather than nudging. The durations differ so they settle left to right, which is what a
+  mechanical one does and why the effect is recognisable at all.
+
+  Useful as it stands: a subscriber count, a total raised, a figure at the end of a case study.
+  Change the number and the strips, and nothing else moves.
+-->
+<div class="stage">
+  <div --cupricut-background class="backdrop"></div>
+
+  <div class="card">
+    <div class="eyebrow">SUBSCRIBERS</div>
+
+    <div class="counter">
+      <div class="win"><div class="strip s0"><div class="d">0</div><div class="d">1</div><div class="d">2</div><div class="d">3</div><div class="d">4</div><div class="d">5</div><div class="d">6</div><div class="d">7</div><div class="d">8</div><div class="d">9</div><div class="d">0</div><div class="d">1</div><div class="d">2</div></div></div>
+      <div class="win"><div class="strip s1"><div class="d">0</div><div class="d">1</div><div class="d">2</div><div class="d">3</div><div class="d">4</div><div class="d">5</div><div class="d">6</div><div class="d">7</div><div class="d">8</div><div class="d">9</div><div class="d">0</div><div class="d">1</div><div class="d">2</div><div class="d">3</div><div class="d">4</div></div></div>
+      <div class="sep">,</div>
+      <div class="win"><div class="strip s2"><div class="d">0</div><div class="d">1</div><div class="d">2</div><div class="d">3</div><div class="d">4</div><div class="d">5</div><div class="d">6</div><div class="d">7</div><div class="d">8</div><div class="d">9</div><div class="d">0</div><div class="d">1</div><div class="d">2</div><div class="d">3</div><div class="d">4</div><div class="d">5</div><div class="d">6</div><div class="d">7</div><div class="d">8</div><div class="d">9</div></div></div>
+      <div class="win"><div class="strip s3"><div class="d">0</div><div class="d">1</div><div class="d">2</div><div class="d">3</div><div class="d">4</div><div class="d">5</div><div class="d">6</div><div class="d">7</div><div class="d">8</div><div class="d">9</div><div class="d">0</div><div class="d">1</div><div class="d">2</div><div class="d">3</div><div class="d">4</div><div class="d">5</div><div class="d">6</div><div class="d">7</div><div class="d">8</div></div></div>
+      <div class="win"><div class="strip s4"><div class="d">0</div><div class="d">1</div><div class="d">2</div><div class="d">3</div><div class="d">4</div><div class="d">5</div><div class="d">6</div><div class="d">7</div><div class="d">8</div><div class="d">9</div><div class="d">0</div><div class="d">1</div></div></div>
+    </div>
+
+    <div class="rule"></div>
+    <div class="caption">and counting, without a browser anywhere</div>
+  </div>
+</div>
+
+<style>
+  :root {
+    --bg-top: #0a0d13;
+    --bg-bottom: #141c29;
+    --card: #161e2c;
+    --ink: #f4f6fb;
+    --muted: #8593ab;
+    --accent: #d9642a;
+    --font: "Noto Sans";
+  }
+
+  .stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    display: flex;
+    justify-content: center;
+    font-family: var(--font);
+  }
+
+  .backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(158deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+  }
+
+  .card {
+    position: absolute;
+    left: 240px;
+    top: 150px;
+    width: 800px;
+    height: 420px;
+    padding: 44px 52px;
+    border-radius: 20px;
+    background: var(--card);
+    animation: lift 0.6s ease-out both;
+  }
+
+  .eyebrow {
+    font-size: 15px;
+    font-weight: 700;
+    color: var(--accent);
+  }
+
+  /* ---- the counter -------------------------------------------------------------------- */
+
+  .counter {
+    display: flex;
+    align-items: flex-start;
+    margin-top: 38px;
+    height: 120px;
+  }
+
+  /* One cell tall, and clipping. The whole illusion is this box. */
+  .win {
+    width: 66px;
+    height: 120px;
+    overflow: hidden;
+  }
+
+  /* Exactly one cell per digit. line-height is what makes a cell a cell - and is precisely what
+     did not work until 0.25.1, which is why this composition did not exist before then. */
+  .d {
+    height: 120px;
+    line-height: 120px;
+    font-size: 96px;
+    font-weight: 700;
+    color: var(--ink);
+    text-align: center;
+  }
+
+  /* The comma is NOT in a window and needs no clipping - it never moves. A shorter line box than
+     the digit cells, because a comma hangs below the baseline and a box sized to the digits cuts
+     its tail off. */
+  .sep {
+    width: 30px;
+    height: 120px;
+    line-height: 96px;
+    font-size: 80px;
+    font-weight: 700;
+    color: var(--muted);
+    text-align: center;
+  }
+
+  .s0 { animation: roll0 1.5s ease-out 0.35s both; }
+  .s1 { animation: roll1 1.8s ease-out 0.35s both; }
+  .s2 { animation: roll2 2.1s ease-out 0.35s both; }
+  .s3 { animation: roll3 2.4s ease-out 0.35s both; }
+  .s4 { animation: roll4 2.8s ease-out 0.35s both; }
+
+  /* ---- the rest ----------------------------------------------------------------------- */
+
+  .rule {
+    height: 5px;
+    width: 0;
+    margin-top: 40px;
+    border-radius: 3px;
+    background: var(--accent);
+    animation: draw 0.9s ease-out 2.6s both;
+  }
+
+  .caption {
+    font-size: 19px;
+    color: var(--muted);
+    margin-top: 22px;
+    animation: fade 0.6s ease-out 3s both;
+  }
+
+  /* ---- motion ------------------------------------------------------------------------- */
+
+  @keyframes roll0 { from { transform: translateY(0); } to { transform: translateY(-1440px); } }
+  @keyframes roll1 { from { transform: translateY(0); } to { transform: translateY(-1680px); } }
+  @keyframes roll2 { from { transform: translateY(0); } to { transform: translateY(-2280px); } }
+  @keyframes roll3 { from { transform: translateY(0); } to { transform: translateY(-2160px); } }
+  @keyframes roll4 { from { transform: translateY(0); } to { transform: translateY(-1320px); } }
+
+  @keyframes lift {
+    from { opacity: 0; transform: translateY(26px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes draw { from { width: 0; } to { width: 420px; } }
+
+  @keyframes fade {
+    from { opacity: 0; transform: translateY(14px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+</style>

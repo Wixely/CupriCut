@@ -18,6 +18,20 @@ public static class Program
 {
     public static int Main(string[] args)
     {
+        // A bare word is never an option this program takes, and it is almost always somebody
+        // typing a CLI verb at the server.
+        //
+        // `CupriCut.exe lint promo.html` used to START THE SERVER: AddCommandLine treats an
+        // unrecognised positional as nothing at all, so the verb vanished, the arguments were
+        // ignored, and the process sat there serving MCP - or, when a server was already running,
+        // failed to bind a port with an error about sockets that had nothing to do with what was
+        // asked for. Two identically named binaries and a silent shrug.
+        if (Refuse(args) is { } complaint)
+        {
+            Console.Error.WriteLine(complaint);
+            return 2;
+        }
+
         // When running as a Windows Service the working directory is C:\Windows\System32, so
         // resolve config, compositions, fonts and logs relative to the exe.
         var contentRoot = GetContentRoot();
@@ -292,6 +306,40 @@ public static class Program
             startupLog.Information("  {Detail}", detail);
         }
         startupLog.Information("  Content root: {ContentRoot}", contentRoot);
+    }
+
+    /// <summary>What to say about the arguments, or null when there is nothing to say.
+    ///
+    /// <para>This binary is the SERVER and takes only options - <c>-c</c>, <c>--software</c>, and
+    /// configuration overrides. The CLI is a different executable with the same stem, so a verb
+    /// typed at the wrong one is an easy mistake and was previously an invisible one.</para>
+    ///
+    /// <para>The verbs are listed so the message can be specific, and a bare word that is NOT one
+    /// is still refused - a typo deserves an answer too, and there is no bare argument this program
+    /// could have meant.</para></summary>
+    private static string? Refuse(string[] args)
+    {
+        var first = args.FirstOrDefault(a => a.Length > 0 && a[0] is not ('-' or '/'));
+        if (first is null) return null;
+
+        // Kept in step with cli/Program.cs by a test, because a list that drifts is worse than no
+        // list: it would name the CLI for some verbs and not others.
+        string[] verbs =
+        [
+            "frame", "sheet", "frames", "video", "export", "formats", "probe", "inspect", "lint",
+            "audio", "footage", "calibrate", "fonts", "projects", "project",
+        ];
+
+        var cli = Path.Combine(AppContext.BaseDirectory, "CupriCut.Cli" + (OperatingSystem.IsWindows() ? ".exe" : ""));
+        var where = File.Exists(cli) ? cli : "cupricut";
+
+        return verbs.Contains(first, StringComparer.OrdinalIgnoreCase)
+            ? $"CupriCut: '{first}' is a CLI verb, and this is the server. Run it with:{Environment.NewLine}"
+              + $"    {where} {string.Join(' ', args)}{Environment.NewLine}{Environment.NewLine}"
+              + "This executable hosts the MCP server and takes only options (-c for console, --software, Cut:* overrides)."
+            : $"CupriCut: '{first}' is not an option this server takes. It hosts the MCP server and accepts "
+              + $"only options (-c for console, --software, Cut:* overrides).{Environment.NewLine}"
+              + $"For the command line - frame, video, export, lint and the rest - use {where}.";
     }
 
     private static string GetContentRoot() => ContentRoot.Locate();

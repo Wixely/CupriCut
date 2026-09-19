@@ -604,9 +604,11 @@ The rule this repository already follows applies — measure it, then claim it.
 ~~**`line-height` in `px` produces a line box 3x too tall.**~~ **Fixed in CupriFace 0.25.1**
 ([#181](https://github.com/Wixely/CupriFace/issues/181)). Re-measured on the upgrade at
 `font-size: 20px`: no declaration → 24px (20 x 1.2), `20px` → 20px, `1.5em` → 30px, `150%` → 30px.
-All four correct, including the two forms that used to be ignored outright. **The odometer is
-unblocked** — it was abandoned because its digits landed a full cell below the window meant to show
-them, and that was this.
+All four correct, including the two forms that used to be ignored outright. ~~**The odometer is
+unblocked**~~ — **and built**, as `compositions/odometer.html`. It was abandoned because its digits
+landed a full cell below the window meant to show them, and that was this. Each column is a strip
+inside a one-cell window moved by `transform: translateY`; `top` and `margin-top` would do nothing
+at all, silently, which is the other trap it has to avoid.
 
 What follows is kept because the lesson is not about `line-height`. Measured on 0.25.0 by reading
 the text node's own box off the render tree, at `font-size: 48px`:

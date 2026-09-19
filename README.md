@@ -183,7 +183,7 @@ worthless the moment it goes stale — and it goes stale without anyone finding 
 
 ### The compositions that ship
 
-Ten of them, in `compositions/`. Each is a working starting point and each exists to show one thing:
+Eleven of them, in `compositions/`. Each is a working starting point and each exists to show one thing:
 
 | | what it is for |
 |---|---|
@@ -197,6 +197,7 @@ Ten of them, in `compositions/`. Each is a working starting point and each exist
 | `countdown.html` | **A counting clock with no clock.** Ten seconds, eleven divs, no logic: each number is on screen for exactly one second because `data-start` says so. Frame-exact in a way a scripted timer is not. |
 | `bar-race.html` | **Data that moves.** Four ranked bars with the lead changing hands — the overtake is three shapes in one `@keyframes`, because one element gets one animation. The moment the lead changes is declared as an event, because nothing in the render could tell you when two widths cross. |
 | `fixture-card.html` | **A composition that is really a template**, and the **events** example. Two timeline scenes and a price that shortens; the markup never moves, only the text and the figures. The shape you actually ship. |
+| `odometer.html` | **A rolling counter** — five digit strips spinning to a stop inside one-cell windows. The composition that could not be written until `line-height` was fixed, and the reason `transform` is the only way to move anything. |
 
 Every one is pure in `t`, so every one renders directly rather than being swept.
 

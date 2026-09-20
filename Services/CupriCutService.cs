@@ -11,7 +11,25 @@ namespace CupriCut.Services;
 
 /// <summary>Refused because of a configured limit or root, rather than because the composition is
 /// wrong. Tools let this reach the caller with its message intact.</summary>
-public sealed class CutPolicyException(string message) : InvalidOperationException(message);
+public class CutPolicyException(string message) : InvalidOperationException(message);
+
+/// <summary>
+/// The engine could not build a composition at all.
+///
+/// <para>Its own type, and not just a message, because the two callers want opposite things from
+/// it: a render should stop and say which file and why, while <c>lint</c> should CARRY ON - a
+/// document that will not build is the most important thing lint has to report, and dying is the
+/// one response that fails to report it.</para>
+///
+/// <para>It derives from <see cref="CutPolicyException"/> so every tool and CLI verb already
+/// prints it as an ordinary refusal rather than a stack trace.</para>
+/// </summary>
+public sealed class CompositionLoadException(string message, Exception inner)
+    : CutPolicyException(message)
+{
+    /// <summary>What the engine actually threw.</summary>
+    public Exception Engine { get; } = inner;
+}
 
 /// <summary>
 /// Load, settle, sweep. Every tool and every CLI verb goes through <see cref="Sweep"/> - that is
@@ -341,7 +359,29 @@ public sealed class CupriCutService
     /// Never settled and never animated - <see cref="Sweep"/> owns that order.</summary>
     public CupriDocument OpenDocument(Composition composition)
     {
-        var doc = CupriDocument.Load(composition.Html, composition.Css);
+        // Everything that renders comes through here - the sweep, the parallel workers, the
+        // preview, and the inspector - which is why the guard belongs here and not at four call
+        // sites. `CupriDocument.Load` is also where the failure happens: a document the engine
+        // cannot parse throws before anything has been animated or settled, so catching it here
+        // catches all of it.
+        //
+        // Measured: `border: 2px solid rgb(1, 2, 3)` throws ArgumentOutOfRangeException out of the
+        // colour parser. Unwrapped, that reached a user as "length ('-5') must be a non-negative
+        // value", naming no file, no property, and nothing to do about it. CupriFace#196.
+        CupriDocument doc;
+        try
+        {
+            doc = CupriDocument.Load(composition.Html, composition.Css);
+        }
+        catch (Exception ex)
+        {
+            throw new CompositionLoadException(
+                $"The engine could not build '{System.IO.Path.GetFileName(composition.Path)}': "
+                + $"{ex.GetType().Name}: {ex.Message.Split('\n')[0].Trim()}"
+                + (Inspector.LikelyCause(composition) is { } why ? " " + why : ""),
+                ex);
+        }
+
         try
         {
             // Without a registry every cupri-* element expands to nothing: it lays out, paints

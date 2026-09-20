@@ -96,6 +96,10 @@ public static partial class Inspector
     /// <summary>Stored cues that no longer describe the track they were read from.</summary>
     public const string StaleAudio = "CUT008";
 
+    /// <summary>The engine could not build the document at all, so nothing else could be asked
+    /// about it.</summary>
+    public const string Unbuildable = "CUT009";
+
     public static Examination Examine(CupriCutService cut, string path)
     {
         var loaded = Timeline.Apply(cut.LoadComposition(path));
@@ -110,14 +114,63 @@ public static partial class Inspector
         var duration = timeline.Any ? timeline.Duration : defaults?.Duration ?? 0;
         var events = Events.Plan(loaded.Html);
 
-        using var doc = cut.OpenDocument(loaded);
-        doc.Animate(0);
-        var settled = doc.Settle(width, height, TimeSpan.FromSeconds(options.SettleTimeoutSeconds));
+        // A document the engine cannot build is the one case where this has to keep working.
+        // `lint` exists to say what is wrong with a composition, and dying with a bare
+        // ArgumentOutOfRangeException from somewhere inside a CSS parser is the least useful
+        // answer available - it names no file, no property, and nothing an author can act on.
+        //
+        // The engine's own reader survives this and reports it as CF0001, so there is a verdict
+        // to give; it was simply never reached, because opening the document came first.
+        CupriDocument? doc = null;
+        Exception? failure = null;
 
-        // A layout is what asks for a family, so nothing resolves until something paints.
-        using (doc.RenderToImage(width, height)) { }
+        try
+        {
+            doc = cut.OpenDocument(loaded);
+            doc.Animate(0);
+            doc.Settle(width, height, TimeSpan.FromSeconds(options.SettleTimeoutSeconds));
 
+            // A layout is what asks for a family, so nothing resolves until something paints.
+            using (doc.RenderToImage(width, height)) { }
+        }
+        catch (CompositionLoadException ex)
+        {
+            // The document would not build. That is the single most important thing lint exists to
+            // report, so it becomes a finding rather than an exception - see CUT009. Everything
+            // read off the markup is still valid and still reported.
+            failure = ex.Engine;
+            doc?.Dispose();
+            doc = null;
+        }
+        catch (Exception ex) when (ex is not CutPolicyException)
+        {
+            // Anything else the engine does on the way to a first frame. A deliberate policy
+            // refusal still propagates: that is CupriCut saying no, and lint should not soften it.
+            failure = ex;
+            doc?.Dispose();
+            doc = null;
+        }
+
+        try
+        {
+            return doc is null
+                ? Unbuilt(loaded, width, height, fps, duration, timeline, events, failure!)
+                : Built(loaded, doc, width, height, fps, duration, timeline, events);
+        }
+        finally
+        {
+            doc?.Dispose();
+        }
+    }
+
+    /// <summary>Everything that can be said about a document that loaded.</summary>
+    private static Examination Built(
+        Composition loaded, CupriDocument doc, int width, int height, double fps, double duration,
+        TimelinePlan timeline, EventPlan events)
+    {
+        var settled = doc.PendingLoads == 0;
         var report = doc.FontReport;
+
         var fonts = report.Resolutions
             .Select(r => new FontUse(
                 r.Family, r.Weight, r.Slant.ToString(), r.ResolvedFamily,
@@ -133,6 +186,88 @@ public static partial class Inspector
             loaded.Backdrops, loaded.Stylesheets, [.. loaded.References.Distinct()],
             report.RegisteredFamilies, fonts, settled, doc.PendingLoads, purity, findings);
     }
+
+    /// <summary>What can still be said about a document the engine refused to build.
+    ///
+    /// <para>Quite a lot, as it turns out: the timeline, the events, the backdrop and the assets
+    /// are all read off the markup and never needed the engine. The doctor works too. Only the
+    /// fonts and the purity verdict are genuinely unavailable, because both require a layout.</para></summary>
+    private static Examination Unbuilt(
+        Composition loaded, int width, int height, double fps, double duration,
+        TimelinePlan timeline, EventPlan events, Exception failure)
+    {
+        var findings = new List<Finding>
+        {
+            new(FindingLevel.Error, Unbuildable,
+                $"The engine could not build this document, so it cannot be rendered at all: "
+                + $"{failure.GetType().Name}: {failure.Message.Split('\n')[0].Trim()}",
+                LikelyCause(loaded)),
+        };
+
+        // The doctor does not need the document to have built, and it has its own account of the
+        // failure - CF0001 - plus anything else it can see in the markup.
+        foreach (var f in Doctor.Check(loaded.Html, loaded.Css ?? string.Empty, width, height))
+        {
+            findings.Add(new Finding(
+                f.Severity switch
+                {
+                    Severity.Error => FindingLevel.Error,
+                    Severity.Warning => FindingLevel.Warning,
+                    _ => FindingLevel.Info,
+                },
+                f.Code, f.Message, string.IsNullOrWhiteSpace(f.Fix) ? null : f.Fix, f.Line));
+        }
+
+        // Everything below here was read off the markup and is still true.
+        foreach (var problem in timeline.Problems)
+            findings.Add(new Finding(FindingLevel.Warning, TimelineProblem, problem));
+
+        foreach (var problem in events.Problems)
+            findings.Add(new Finding(FindingLevel.Warning, EventProblem, problem));
+
+        return new Examination(
+            loaded.Path, width, height, fps, duration, timeline, events,
+            loaded.Backdrops, loaded.Stylesheets, [.. loaded.References.Distinct()],
+            [], [], Settled: false, PendingLoads: 0,
+            new PurityVerdict(false, ["the document could not be built, so this could not be analysed"]),
+            findings);
+    }
+
+    /// <summary>A known reason the engine refuses a document, when the markup contains one.
+    ///
+    /// <para>Only ever consulted when the build ACTUALLY failed, which is what keeps it honest.
+    /// A lint rule that fired on the pattern itself would go on accusing a perfectly good
+    /// composition the day the engine is fixed; this one stops speaking the moment the document
+    /// builds, and needs no upkeep to retire.</para>
+    ///
+    /// <para>Measured on CupriFace 0.26.1, not guessed: <c>rgb()</c> and <c>rgba()</c> inside a
+    /// border shorthand throw out of the colour parser, while <c>hsl()</c>, a keyword, a hex value
+    /// and <c>var()</c> in the same place are all fine, and <c>rgb()</c> is fine in every other
+    /// property tried. Raised as
+    /// <see href="https://github.com/Wixely/CupriFace/issues/196">CupriFace#196</see>, where it
+    /// costs a downstream corpus 35 of 187 compositions.</para></summary>
+    public static string? LikelyCause(Composition loaded)
+    {
+        var css = (loaded.Css ?? string.Empty) + loaded.Html;
+
+        if (BorderWithRgb().Match(css) is { Success: true } m)
+        {
+            return $"A border shorthand with an rgb() colour crashes the engine's CSS parser - "
+                   + $"here, '{m.Value.Trim()}'. Split it into longhands "
+                   + "(border-width / border-style / border-color), or write the colour as hex or "
+                   + "hsl(); all three work. CupriFace#196.";
+        }
+
+        return null;
+    }
+
+    // `border`, `border-top` and the rest, up to an rgb()/rgba() on the same declaration. Kept
+    // deliberately narrow: this only ever runs to EXPLAIN a failure that already happened, so a
+    // miss costs an explanation while a false match would misdirect.
+    [System.Text.RegularExpressions.GeneratedRegex(
+        @"border(?:-(?:top|right|bottom|left))?\s*:[^;{}]*\brgba?\s*\([^)]*\)[^;{}]*",
+        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
+    private static partial System.Text.RegularExpressions.Regex BorderWithRgb();
 
     /// <summary>Whether a project's stored cues still describe the track it carries.
     ///

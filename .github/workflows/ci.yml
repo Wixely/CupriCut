@@ -69,8 +69,28 @@ jobs:
       - name: Build
         run: dotnet build CupriCut.sln -c Release --no-restore
 
+      # --blame-crash because a test host that CRASHES reports nothing useful on its own. Run 15
+      # of this workflow died on ubuntu after 227 passing tests with "The active test run was
+      # aborted. Reason: Test host process crashed", and then, as the only explanation:
+      #
+      #     MSB4181: The "VSTestTask" task returned false but did not log an error.
+      #
+      # No test name, no stack, and it did not reproduce on the next commit - so the one run that
+      # had the evidence threw it away. This writes a Sequence.xml naming the test that was in
+      # flight plus a dump, which is the difference between a diagnosable intermittent failure and
+      # a coin flip. It costs nothing on a green run.
       - name: Test
-        run: dotnet test CupriCut.sln -c Release --no-build --verbosity normal
+        run: >
+          dotnet test CupriCut.sln -c Release --no-build --verbosity normal
+          --blame-crash --results-directory artifacts/test
+
+      - name: Upload the crash evidence
+        if: failure()
+        uses: actions/upload-artifact@v4
+        with:
+          name: test-crash-${{ matrix.os }}
+          path: artifacts/test
+          if-no-files-found: ignore
 
       # A render that only ever ran on the developer's laptop is not evidence. This walks the whole
       # pipeline the way a user does - the CLI over the shipped example composition - and fails the

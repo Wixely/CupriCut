@@ -1,8 +1,9 @@
-<img src="docs/icon.svg" alt="" width="104" align="right">
+<h1 align="center">
+  <img src="docs/icon.svg" alt="" width="112"><br>
+  <img src="docs/wordmark.png" alt="CupriCut" width="300">
+</h1>
 
-# CupriCut
-
-**Write HTML, render video. No browser.**
+<p align="center"><strong>Write HTML, render video. No browser.</strong></p>
 
 CupriCut renders an HTML + CSS composition to frames — and to an MP4 — by driving the
 [CupriFace](https://github.com/Wixely/CupriFace) engine's clock directly. It is built for agents:

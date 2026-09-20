@@ -27,11 +27,12 @@ Writes:
     docs/icon.png          512, for anywhere that wants a raster
     docs/icon-128.png      a smaller one
     docs/icon-sizes.png    a contact sheet, on both grounds, for judging it
+    docs/wordmark.png      the CupriCut lettering, in the same copper
     cupricut.ico           the application icon and /favicon.ico, 16 to 256
 """
 import math
 import os
-from PIL import Image, ImageDraw
+from PIL import Image, ImageDraw, ImageFont
 
 # ---- the mark, in a 256 unit square ---------------------------------------------------------
 BOX = 256
@@ -195,6 +196,76 @@ def contact_sheet(master):
     return sheet
 
 
+# ---- wordmark --------------------------------------------------------------------------------
+WORD = 'CupriCut'
+FACE = os.path.join(REPO, 'fonts', 'NotoSans-Bold.ttf')
+
+
+def sampled_range():
+    """The slice of the ramp the icon's shape actually lands on.
+
+    The mark is inset by PAD, so it never reaches either end of the gradient - it runs from about
+    t = 0.118 to t = 0.886, and the pale top and near-black bottom are only ever theoretical. The
+    axis points into the +x +y quadrant, so the two inset corners are the two extremes."""
+    dx, dy = GRAD_TO[0] - GRAD_FROM[0], GRAD_TO[1] - GRAD_FROM[1]
+    span = dx * dx + dy * dy
+
+    def at(x, y):
+        return ((x - GRAD_FROM[0]) * dx + (y - GRAD_FROM[1]) * dy) / span
+
+    return at(PAD, PAD), at(BOX - PAD, BOX - PAD)
+
+
+def word_ramp(w, h):
+    """The same copper, across a wide box instead of a square one.
+
+    Two things have to agree with the icon or the pair reads as two brands sat together. The
+    DIRECTION, which is the unit vector of GRAD_FROM -> GRAD_TO, and the RANGE, which is
+    `sampled_range` above. Both are derived rather than typed, so a change to PAD or to the axis
+    carries across on its own.
+
+    The range is not a nicety. The first wordmark ran t from 0 to 1 and its leading C came out in
+    a pale #F7B562 the icon never shows - faint enough to lose against GitHub's white, which is
+    the default theme. Exactly the mistake the SVG made, in the other direction."""
+    g = Image.new('RGB', (w, h))
+    px = g.load()
+    a, b, c = (rgb(st[1]) for st in STOPS)
+    lo_t, hi_t = sampled_range()
+
+    n = math.hypot(GRAD_TO[0] - GRAD_FROM[0], GRAD_TO[1] - GRAD_FROM[1])
+    ux, uy = (GRAD_TO[0] - GRAD_FROM[0]) / n, (GRAD_TO[1] - GRAD_FROM[1]) / n
+    span = w * ux + h * uy          # the box's own extent along that axis
+
+    for y in range(h):
+        for x in range(w):
+            t = lo_t + (hi_t - lo_t) * min(1.0, max(0.0, (x * ux + y * uy) / span))
+            u, lo, hi = (t / 0.5, a, b) if t < 0.5 else ((t - 0.5) / 0.5, b, c)
+            px[x, y] = tuple(int(lo[i] + (hi[i] - lo[i]) * u) for i in range(3))
+    return g
+
+
+def wordmark(size=96, scale=4, pad=18):
+    """'CupriCut' in the icon's copper, on transparency.
+
+    Plain, after trying two alternatives side by side on both grounds. Running the icon's cut
+    through the letters mangled the C and the u and read as a rendering fault rather than a
+    motif - the gap that works at 256px square is noise across a word. Setting 'Cupri' in the
+    pale ink and picking out 'Cut' in copper looked best of the three on dark and then very
+    nearly vanished on white. This one is the only one that survives both."""
+    f = ImageFont.truetype(FACE, size * scale)
+    p = pad * scale
+
+    box = ImageDraw.Draw(Image.new('L', (1, 1))).textbbox((0, 0), WORD, font=f)
+    w, h = box[2] - box[0] + p * 2, box[3] - box[1] + p * 2
+
+    mask = Image.new('L', (w, h), 0)
+    ImageDraw.Draw(mask).text((p - box[0], p - box[1]), WORD, font=f, fill=255)
+
+    out = Image.new('RGBA', (w, h), (0, 0, 0, 0))
+    out.paste(word_ramp(w, h), (0, 0), mask)
+    return out
+
+
 if __name__ == '__main__':
     master = render()
 
@@ -205,10 +276,16 @@ if __name__ == '__main__':
     master.resize((128, 128), Image.LANCZOS).save(os.path.join(DOCS, 'icon-128.png'))
     contact_sheet(master).save(os.path.join(DOCS, 'icon-sizes.png'))
 
+    # Twice the width the README shows it at, so it stays sharp on a high-density screen.
+    mark = wordmark()
+    mark.resize((640, max(1, mark.height * 640 // mark.width)), Image.LANCZOS).save(
+        os.path.join(DOCS, 'wordmark.png'))
+
     # Every size the Windows shell asks for, each downsampled from the MASTER rather than from the
     # next size up - which is where small icons usually turn to mush.
     master.resize((256, 256), Image.LANCZOS).save(
         os.path.join(REPO, 'cupricut.ico'), format='ICO',
         sizes=[(s, s) for s in (256, 128, 64, 48, 32, 24, 16)])
 
-    print('wrote docs/icon.svg, docs/icon.png, docs/icon-128.png, docs/icon-sizes.png, cupricut.ico')
+    print('wrote docs/icon.svg, docs/icon.png, docs/icon-128.png, docs/icon-sizes.png, '
+          'docs/wordmark.png, cupricut.ico')

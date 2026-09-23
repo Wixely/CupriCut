@@ -1,4 +1,4 @@
-using CupriCut.Services;
+﻿using CupriCut.Services;
 using Xunit;
 
 namespace CupriCut.Tests;
@@ -81,13 +81,13 @@ public sealed class InspectorTests
         // and null as the stylesheet argument turns the CSS pass off completely.
         const string Html = """
             <div class="a"></div>
-            <style>body,html{font-family:"Noto Sans";} .a { letter-spacing: 2px; width:10px; height:10px; }</style>
+            <style>body,html{font-family:"Noto Sans";} .a { text-transform: uppercase; width:10px; height:10px; }</style>
             """;
 
         using var harness = new Harness();
         var x = Inspector.Examine(harness.Cut, harness.WriteComposition("ls.html", Html));
 
-        Assert.Contains(x.Findings, f => f.Code == "CF0050" && f.What.Contains("letter-spacing"));
+        Assert.Contains(x.Findings, f => f.Code == "CF0050" && f.What.Contains("text-transform"));
         Assert.Equal("warnings", x.Verdict);
     }
 
@@ -181,7 +181,7 @@ public sealed class InspectorTests
         // property it does not contain, and passing whenever it was run alone.
         const string Ignores = """
             <div class="a">x</div>
-            <style>body,html{font-family:"Noto Sans";} .a { letter-spacing: 2px; width:10px; height:10px; }</style>
+            <style>body,html{font-family:"Noto Sans";} .a { text-transform: uppercase; width:10px; height:10px; }</style>
             """;
         const string Plain = """
             <div class="b">x</div>

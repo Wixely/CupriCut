@@ -1,4 +1,4 @@
-using CupriFace;
+﻿using CupriFace;
 using SkiaSharp;
 using Xunit;
 
@@ -144,9 +144,13 @@ public class AuthoringGuideTests : IDisposable
     }
 
     [Fact]
-    public void Letter_spacing_is_still_ignored()
+    public void Letter_spacing_widens_text_as_of_0_27_0()
     {
-        Assert.Equal(TextWidth(""), TextWidth("letter-spacing:8px;"));
+        // This test asserted the opposite until the engine was upgraded, and the measurement is
+        // what changed its mind: 172px either way on 0.26.1, 204px with the spacing on 0.28.1.
+        // Four in five compositions in a downstream corpus use the property, so it was worth the
+        // upgrade on its own.
+        Assert.True(TextWidth("letter-spacing:8px;") > TextWidth(""));
     }
 
     [Fact]

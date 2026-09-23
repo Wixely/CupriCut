@@ -1,8 +1,9 @@
-using System.Diagnostics;
+﻿using System.Diagnostics;
 using CupriCut.Configuration;
 using CupriFace;
 using CupriFace.Components;
 using CupriFace.Text;
+using CupriFace.Woff2;
 using Microsoft.Extensions.Logging;
 using Microsoft.Extensions.Options;
 using SkiaSharp;
@@ -393,6 +394,17 @@ public sealed class CupriCutService
             // to replace <img> (CF0030) with <cupri-image>, which is right, and which then drew
             // nothing at all - the one substitution the tool actively recommends.
             doc.UseComponents(ComponentRegistry.Default());
+
+            // The WOFF 2 decoder, which this tool needs rather than merely enjoys. A .woff2 the
+            // engine cannot read is refused BY NAME, and FontPolicy.RegisteredOnly below then
+            // turns that into a failed render - correct, and useless, because .woff2 is what every
+            // font pipeline emits and what Google Fonts serves. Without this line the strict
+            // policy's promise ("a face resolves or you hear about it") is kept by failing on the
+            // commonest web font format there is.
+            //
+            // Process-wide rather than per-document, which is how the engine exposes it: once any
+            // document has asked, every later one decodes too.
+            doc.UseWoff2();
 
             foreach (var dir in ConfiguredFontDirectories.Select(Rooted).Where(Directory.Exists))
                 doc.LoadFonts(dir, recursive: true);

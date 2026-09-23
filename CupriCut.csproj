@@ -1,4 +1,4 @@
-<Project Sdk="Microsoft.NET.Sdk">
+﻿<Project Sdk="Microsoft.NET.Sdk">
 
   <PropertyGroup>
     <OutputType>Exe</OutputType>
@@ -39,6 +39,9 @@
     <!-- The desktop window. The MCP server does not need it, but one binary serves both faces and
          -c is what turns the window off (Docker and Windows Service imply it). -->
     <PackageReference Include="CupriFace.Shell" />
+    <!-- The WOFF 2 decoder. See Directory.Packages.props: without it every .woff2 face is refused
+         by name, and the strict font policy turns that into a failed render. -->
+    <PackageReference Include="CupriFace.Woff2" />
     <PackageReference Include="SkiaSharp" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />

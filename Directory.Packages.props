@@ -1,12 +1,19 @@
-<Project>
+﻿<Project>
   <PropertyGroup>
     <ManagePackageVersionsCentrally>true</ManagePackageVersionsCentrally>
   </PropertyGroup>
 
   <ItemGroup>
     <!-- The engine. Time is an argument: doc.Animate(t) is what the whole renderer stands on. -->
-    <PackageVersion Include="CupriFace" Version="0.26.1" />
-    <PackageVersion Include="CupriFace.Shell" Version="0.26.1" />
+    <PackageVersion Include="CupriFace" Version="0.28.1" />
+    <PackageVersion Include="CupriFace.Shell" Version="0.28.1" />
+    <!--
+      Optional, and NOT optional for this tool. A .woff2 the engine cannot decode is
+      refused by name, and FontPolicy.RegisteredOnly then fails the render - which is
+      correct and useless, because .woff2 is what every font pipeline emits. Shipped in
+      0.28.1; the host installs the decoder with UseWoff2().
+    -->
+    <PackageVersion Include="CupriFace.Woff2" Version="0.28.1" />
     <!-- Pinned to the engine's own SkiaSharp: SKImage and SKCanvas cross the boundary. -->
     <PackageVersion Include="SkiaSharp" Version="3.116.1" />
   </ItemGroup>

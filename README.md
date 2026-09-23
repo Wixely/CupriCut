@@ -1,4 +1,4 @@
-<h1 align="center">
+﻿<h1 align="center">
   <img src="docs/icon.svg" alt="" width="112"><br>
   <img src="docs/wordmark.png" alt="CupriCut" width="300">
 </h1>
@@ -590,7 +590,7 @@ the attribute perfectly, but a CSS attribute selector on it matches nothing and 
 An inline `display:none` works, and beats an author's own `display` rule — which is what makes it
 safe to apply to markup CupriCut did not write.
 
-Built on **CupriFace 0.25.0**. The GUI is itself a `CupriApp` — CupriCut's interface is drawn by the
+Built on **CupriFace 0.28.1**. The GUI is itself a `CupriApp` — CupriCut's interface is drawn by the
 engine CupriCut renders with.
 That is why it was cheap: the preview is an `ISurfaceSource`, the seam the engine already has for
 live pixel producers, so it costs no PNG encode; and the region drag is `OnPointer`, the same one a

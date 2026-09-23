@@ -1,4 +1,4 @@
-using CupriFace;
+﻿using CupriFace;
 using CupriFace.Diagnostics;
 using CupriFace.Text;
 
@@ -240,34 +240,17 @@ public static partial class Inspector
     /// composition the day the engine is fixed; this one stops speaking the moment the document
     /// builds, and needs no upkeep to retire.</para>
     ///
-    /// <para>Measured on CupriFace 0.26.1, not guessed: <c>rgb()</c> and <c>rgba()</c> inside a
-    /// border shorthand throw out of the colour parser, while <c>hsl()</c>, a keyword, a hex value
-    /// and <c>var()</c> in the same place are all fine, and <c>rgb()</c> is fine in every other
-    /// property tried. Raised as
+    /// <para><b>It currently knows nothing, and that is the design working.</b> The one cause it
+    /// knew was <c>rgb()</c> inside a border shorthand, measured on CupriFace 0.26.1 and raised as
     /// <see href="https://github.com/Wixely/CupriFace/issues/196">CupriFace#196</see>, where it
-    /// costs a downstream corpus 35 of 187 compositions.</para></summary>
+    /// cost a downstream corpus 35 of 187 compositions. 0.26.2 fixed it and 0.28.1 is what this
+    /// tool pins, so the advice was deleted rather than left to accuse a declaration that now
+    /// builds. The hook stays for the next one.</para></summary>
     public static string? LikelyCause(Composition loaded)
     {
-        var css = (loaded.Css ?? string.Empty) + loaded.Html;
-
-        if (BorderWithRgb().Match(css) is { Success: true } m)
-        {
-            return $"A border shorthand with an rgb() colour crashes the engine's CSS parser - "
-                   + $"here, '{m.Value.Trim()}'. Split it into longhands "
-                   + "(border-width / border-style / border-color), or write the colour as hex or "
-                   + "hsl(); all three work. CupriFace#196.";
-        }
-
+        _ = loaded;
         return null;
     }
-
-    // `border`, `border-top` and the rest, up to an rgb()/rgba() on the same declaration. Kept
-    // deliberately narrow: this only ever runs to EXPLAIN a failure that already happened, so a
-    // miss costs an explanation while a false match would misdirect.
-    [System.Text.RegularExpressions.GeneratedRegex(
-        @"border(?:-(?:top|right|bottom|left))?\s*:[^;{}]*\brgba?\s*\([^)]*\)[^;{}]*",
-        System.Text.RegularExpressions.RegexOptions.IgnoreCase)]
-    private static partial System.Text.RegularExpressions.Regex BorderWithRgb();
 
     /// <summary>Whether a project's stored cues still describe the track it carries.
     ///

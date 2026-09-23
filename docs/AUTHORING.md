@@ -1,9 +1,9 @@
-# Writing a composition
+﻿# Writing a composition
 
 Everything you need to compose for CupriCut, and every way the engine differs from a browser.
 
 **This document is measured, not remembered**, and the measurements are **tests**. Every claim
-below was produced by rendering a document and reading the pixels, against **CupriFace 0.26.1** —
+below was produced by rendering a document and reading the pixels, against **CupriFace 0.28.1** —
 and each one is asserted in `AuthoringGuideTests`, so this page is a description of what that file
 measures rather than prose about the engine.
 
@@ -237,11 +237,21 @@ a box **3× too tall** and `em`/`%` were ignored outright
 ([CupriFace#181](https://github.com/Wixely/CupriFace/issues/181)), which is why no shipped
 composition sets one. They can now.
 
+**Fixed by the 0.26.1 → 0.28.1 upgrade**, and each one measured rather than read from release
+notes:
+
+| | |
+|---|---|
+| `letter-spacing` | **Works** as of 0.27.0. Measured: 172px without it and 204px with `8px` of it, on the same string. It was silently ignored before, and four in five compositions in a downstream corpus use it. |
+| `inset` | **Works** as of 0.27.0, shorthand and the four longhands. A full-bleed overlay sized with it used to have no size at all. |
+| `border: 2px solid rgb(…)` | **Builds** as of 0.26.2. It used to throw out of the colour parser and take the whole document with it — `CupriFace#196`, which cost a downstream corpus 35 of 187 compositions. The advice this tool used to print for it has been deleted. |
+| `.woff2` fonts | **Load** as of 0.28.1, through the optional `CupriFace.Woff2` package. This is the format every font pipeline emits and Google Fonts serves; under `FontPolicy.RegisteredOnly` it was not a silent substitution but a failed render. |
+| inline `<svg>` | Still not drawn here. The engine can as of 0.27.0, through the optional `CupriFace.Svg` package and a `UseSvg()` call, which this tool does not yet make. |
+
 **Still does not work:**
 
 | | |
 |---|---|
-| `letter-spacing` | Silently ignored — measured, text is the same width with and without. Reported as `CF0050`, so `lint` catches it. |
 | repeating gradients | Parse but paint **nothing**. Use one gradient with hard stops: `linear-gradient(90deg, #a 0 20px, #b 20px 40px)`. Reported as `CF0051`. |
 | `align-self: center`, `margin: auto` | Do not centre a flex item. Use `align-items` on the parent, which does work. |
 | `<img>` | Not a primitive the engine draws — it lays out and stays empty. Use `<cupri-image src="...">`, which takes a `data:` URI or a path beside the composition. Reported as `CF0030`. |

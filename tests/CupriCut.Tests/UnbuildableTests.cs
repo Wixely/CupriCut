@@ -1,4 +1,4 @@
-using CupriCut.Services;
+﻿using CupriCut.Services;
 using Xunit;
 using Xunit.Abstractions;
 
@@ -13,15 +13,35 @@ namespace CupriCut.Tests;
 /// before anything could report on it. The one thing lint exists to say was the one thing it could
 /// not say.</para>
 ///
-/// <para>The trigger is measured, not guessed: <c>rgb()</c> or <c>rgba()</c> inside a border
-/// shorthand throws out of CupriFace 0.26.1's colour parser.
-/// <see href="https://github.com/Wixely/CupriFace/issues/196">CupriFace#196</see>, where it costs a
-/// downstream corpus 35 of 187 compositions.</para>
+/// <para><b>The trigger changed when the engine was fixed, and that is the point of the file.</b>
+/// It used to be <c>rgb()</c> inside a border shorthand, which threw out of CupriFace 0.26.1's
+/// colour parser - <see href="https://github.com/Wixely/CupriFace/issues/196">CupriFace#196</see>,
+/// where it cost a downstream corpus 35 of 187 compositions. 0.26.2 fixed it, so on 0.28.1 that
+/// document builds and four tests here failed on cue.</para>
+///
+/// <para>The trigger is now a <c>@font-face</c> whose file is not there. That is not a bug to be
+/// fixed out from under this file: a face that cannot be loaded under
+/// <c>FontPolicy.RegisteredOnly</c> is an error BY DESIGN, and this tool's whole font argument is
+/// that it must be. What is being tested was never the bug anyway - it is that a document the
+/// engine refuses gets reported rather than taking the tool down with it.</para>
 /// </summary>
 public class UnbuildableTests(ITestOutputHelper output)
 {
-    private const string Crashes = """
+    /// <summary>A composition the engine will not build: it asks for a face that is not there,
+    /// and the strict policy makes that fatal rather than a silent substitution.</summary>
+    private const string Refused = """
         <div class="card" data-start="1" data-duration="2" data-cut-event="+0.5:shown">Hello</div>
+        <style>
+          @font-face { font-family: "Nowhere"; src: url('no-such-face.ttf'); }
+          body, html { font-family: "Nowhere"; background: #101014; }
+          .card { width: 300px; height: 120px; color: #f4f6fb; }
+        </style>
+        """;
+
+    /// <summary>The declaration that used to bring the whole tool down, kept as a regression guard
+    /// for the engine fix rather than deleted with the bug.</summary>
+    private const string OnceCrashed = """
+        <div class="card">Hello</div>
         <style>
           body, html { font-family: "Noto Sans"; background: #101014; }
           .card { width: 300px; height: 120px; color: #f4f6fb; border: 2px solid rgb(198, 173, 144); }
@@ -32,7 +52,7 @@ public class UnbuildableTests(ITestOutputHelper output)
     public void Lint_survives_it_and_reports_it_as_an_error()
     {
         using var harness = new Harness();
-        var name = harness.WriteComposition("crash.html", Crashes);
+        var name = harness.WriteComposition("refused.html", Refused);
 
         var x = Inspector.Examine(harness.Cut, name);
 
@@ -43,25 +63,32 @@ public class UnbuildableTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void The_advice_names_the_declaration_and_the_way_out()
+    public void The_finding_names_the_family_and_the_file()
     {
+        // An author who is told "the document could not be built" has nothing to do. One who is
+        // told which family, and which file it wanted, has one thing to do.
         using var harness = new Harness();
-        var name = harness.WriteComposition("crash.html", Crashes);
+        var name = harness.WriteComposition("refused.html", Refused);
 
         var found = Assert.Single(
             Inspector.Examine(harness.Cut, name).Findings, f => f.Code == Inspector.Unbuildable);
 
-        Assert.Contains("border: 2px solid rgb(198, 173, 144)", found.Fix);
-        Assert.Contains("border-color", found.Fix);
-        Assert.Contains("196", found.Fix);
+        Assert.Contains("Nowhere", found.What);
+        Assert.Contains("no-such-face.ttf", found.What);
     }
 
     [Fact]
-    public void Every_alternative_the_advice_offers_actually_works()
+    public void A_border_with_an_rgb_colour_builds_again()
     {
-        // The test that matters most. Advice that does not work is worse than none - an author
-        // who follows it and still fails has been sent in a circle. Each of these is rendered.
+        // CupriFace#196, fixed in 0.26.2. Kept as a guard rather than deleted with the advice it
+        // used to justify: this one declaration cost a downstream corpus 35 of 187 compositions,
+        // and a regression would be expensive to notice any other way.
         using var harness = new Harness();
+
+        var whole = Inspector.Examine(harness.Cut,
+            harness.WriteComposition("once-crashed.html", OnceCrashed));
+
+        Assert.DoesNotContain(whole.Findings, f => f.Code == Inspector.Unbuildable);
 
         foreach (var (label, declaration) in new[]
                  {
@@ -91,7 +118,7 @@ public class UnbuildableTests(ITestOutputHelper output)
         // The point of not simply failing. The timeline, the events, the backdrop and the assets
         // never needed the engine, and an author fixing the document wants to see them.
         using var harness = new Harness();
-        var name = harness.WriteComposition("crash.html", Crashes);
+        var name = harness.WriteComposition("refused.html", Refused);
 
         var x = Inspector.Examine(harness.Cut, name);
 
@@ -102,37 +129,55 @@ public class UnbuildableTests(ITestOutputHelper output)
     }
 
     [Fact]
-    public void The_engines_own_verdict_comes_through_too()
+    public void What_the_doctor_can_still_say_is_still_said()
     {
-        // CupriDoctor survives this - it always did - and reports CF0001. Lint simply never
-        // reached it, because opening the document came first.
+        // The point of not simply failing: CupriDoctor reads the document whether or not this
+        // tool could open it, and an author fixing one problem wants to see the others.
         using var harness = new Harness();
-        var name = harness.WriteComposition("crash.html", Crashes);
+        var name = harness.WriteComposition("refused.html", Refused);
 
-        Assert.Contains(Inspector.Examine(harness.Cut, name).Findings, f => f.Code == "CF0001");
+        var x = Inspector.Examine(harness.Cut, name);
+
+        Assert.Equal("errors", x.Verdict);
+        Assert.Single(x.Findings, f => f.Code == Inspector.Unbuildable);
     }
 
     [Fact]
-    public void A_render_refuses_by_name_rather_than_throwing_from_a_css_parser()
+    public void A_refusal_on_the_way_to_a_first_frame_names_what_it_refused()
     {
+        // This used to open the document and assert a CompositionLoadException out of
+        // CupriDocument.Load, because CupriFace#196 threw there. On 0.28.1 nothing known throws
+        // there: the guard around Load is still in place and is now untriggered by any input this
+        // repository can produce, which is worth saying plainly rather than testing by pretence.
+        //
+        // The behaviour that still matters, and that this asserts, is the one the guard exists
+        // for: a refusal anywhere between opening a composition and its first frame arrives
+        // NAMED. A face resolves when a layout asks for it, so this one arrives at the render.
         using var harness = new Harness();
-        var name = harness.WriteComposition("crash.html", Crashes);
+        var name = harness.WriteComposition("refused.html", Refused);
         var loaded = harness.Cut.LoadComposition(name);
 
-        var ex = Assert.Throws<CompositionLoadException>(() => harness.Cut.OpenDocument(loaded));
+        using var doc = harness.Cut.OpenDocument(loaded);
+        doc.Animate(0);
 
+        var ex = Record.Exception(() =>
+        {
+            doc.Settle(1280, 720, TimeSpan.FromSeconds(10));
+            using (doc.RenderToImage(1280, 720)) { }
+        });
+
+        Assert.NotNull(ex);
         output.WriteLine(ex.Message);
-        Assert.Contains("crash.html", ex.Message);
-        Assert.Contains("border-color", ex.Message);
-        Assert.IsType<ArgumentOutOfRangeException>(ex.Engine);
+        Assert.Contains("Nowhere", ex.Message);
     }
 
     [Fact]
     public void A_composition_that_builds_is_offered_no_explanation()
     {
-        // The cause is only ever consulted when a build actually failed, which is what stops it
-        // accusing a perfectly good composition. The day CupriFace#196 is fixed, this file's other
-        // tests will fail and this one will not - and that is the right way round.
+        // LikelyCause knows nothing at present, because the one cause it knew was fixed. The hook
+        // stays: a guess about WHY the engine refused is worth having beside the refusal, and the
+        // rule that it is only ever consulted after an actual failure is what keeps it from
+        // accusing a working composition.
         using var harness = new Harness();
         var loaded = harness.Cut.LoadComposition(
             harness.WriteComposition("fine.html", Harness.Keyframed));

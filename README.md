@@ -17,12 +17,19 @@ The comparable tool, [hyperframes](https://github.com/heygen-com/hyperframes), s
 Chrome frame by frame into FFmpeg and has to build "seekable" adapters to approximate what this gets
 for nothing. CupriCut needs no browser at all.
 
-> **Status: Milestone 1 + 1b are in.** The renderer, the MCP server, the CLI, the project file and
-> the Docker image all work: `render_frame`, `contact_sheet`, `render_frames`, `render_video`,
-> `export`, `probe`, `list_fonts`, and the five project tools. Still to come are the timeline layer
-> (`data-start` / `data-duration`), `inspect`, `lint` and the interaction track — see
-> [PLAN.md](PLAN.md) for the build order and [docs/SCOPE.md](docs/SCOPE.md) for the reasoning and
-> the measurements behind it.
+> **Status: Milestones 1, 1b, 1c, 1d, 2 and 4 are in.** The renderer, the MCP server (25 tools),
+> the CLI, the project file, the studio window and the Docker image all work — frames and video,
+> `export` in eight formats, the `data-start` / `data-duration` timeline, declared events,
+> `inspect`, `lint`, annotations a reviewer draws and an agent reads, and cue analysis for both an
+> audio track and the footage underneath.
+>
+> **Milestone 3 (interaction) was dropped on purpose**, not deferred. What is left is Milestone 5:
+> frame packs, and whether this repository takes
+> [CupriLex](https://github.com/Wixely/CupriLex) — now built, and shipping its own package — as a
+> dependency or keeps it at arm's length. **There is no tagged release yet.**
+>
+> See [PLAN.md](PLAN.md) for the build order and [docs/SCOPE.md](docs/SCOPE.md) for the reasoning
+> and the measurements behind it.
 
 ---
 
@@ -100,18 +107,19 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `attach_audio` | store those cues in a project, with the track and a hash of it | **in** |
 | `render_video` / `export` | …and mux it into the finished file, except where it does not belong | **in** |
 | `analyse_video` | where the cuts are in footage, and where it is calm enough to put words over | **in** |
-| `analyse_video` | where the cuts are in footage, and where it is calm enough to put words over | **in** |
 | `lint` | will it render the same somewhere else, and does it render what you meant | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
 | `calibrate` | what this ffmpeg can really do, and the fastest render parallelism | **in** |
 | `save_project` / `load_project` / `update_project` / `list_projects` / `attach_asset` | the work, in a file a later run can reopen | **in** |
 | `move_project` / `create_folder` | projects in folders, which is the difference between three projects and thirty | **in** |
+| `add_annotation` / `list_annotations` / `resolve_annotation` / `delete_annotation` | what the reviewer drew on the preview, as data an agent can act on and tick off | **in** |
 
 
 Compositions are plain HTML + CSS in the engine's documented subset. Timeline attributes —
 `data-start`, `data-duration`, `data-track`, borrowed from hyperframes on purpose so the agents and
-skills that already know them transfer — arrive with Milestone 2.
+skills that already know them transfer — are in, and [docs/AUTHORING.md](docs/AUTHORING.md) is the
+measured guide to what the engine will and will not do with a composition.
 
 ## Projects: the work survives the session
 
@@ -428,36 +436,6 @@ a least-squares fit, about 400 lines. Not to avoid a dependency for its own sake
 library whose version changes the answer makes a render irreproducible in exactly the way this
 project refuses everywhere else. ffmpeg does the decoding, since it is already here and already
 reads everything.
-
-### Reading the footage underneath
-
-The opposite problem to timing motion to music: keeping a caption off a cut.
-
-```
-$ cupricut footage --video clip.mp4 --calm 1.5
-clip.mp4  7s at 30 fps (210 frames)
-  2 cut(s), average motion 0.005, average luminance 0.234
-
-CALM  start a 1.5s caption at 0s (frame 0), motion 0.000 - no cut inside it
-
-      time  frame   strength
-         2s     60       1.00
-         5s    150       0.92
-```
-
-Same cue shape as the audio — a time and the frame it lands on — so nothing acting on one needs to
-learn a second vocabulary. `--calm N` asks the question you actually have: *where do I put a caption
-that is on screen for N seconds?* **It will never answer with a window that straddles a cut**, since
-a caption that begins over one shot and ends over another is worse than one placed badly.
-
-Luminance comes back too, for deciding whether the text over it should be light or dark.
-
-Measured in-process from **32×18 greyscale frames** — ffmpeg decodes, everything else is arithmetic
-here. Not ffmpeg's own `scdet`, for the reason the audio analysis is in-process too: a filter whose
-threshold behaviour changes between builds makes a render irreproducible. At 576 pixels a cut still
-changes nearly everything at once while a pan, however fast, changes it gradually — and throwing
-the detail away removes exactly the grain and compression noise that makes full-resolution
-differencing jumpy.
 
 ### Reading the footage underneath
 

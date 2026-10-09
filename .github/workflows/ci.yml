@@ -152,10 +152,22 @@ jobs:
 
       # Build only, no push: the point here is that the image still assembles - ffmpeg included -
       # not that it is published. Publishing happens on a tag.
+      #
+      # It IS tagged, though, with the name the release will use. An untagged build never
+      # validates a name, which is how `ghcr.io/Wixely/...` - rejected outright, because a
+      # repository name must be lowercase - survived twenty green CI runs and failed the first
+      # release instead. The tag is never pushed; it only has to be legal.
+      - name: Work out the image name
+        id: image
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "repo=ghcr.io/$owner/cupricut" >> "$GITHUB_OUTPUT"
+
       - name: Build
         uses: docker/build-push-action@v6
         with:
           context: .
           push: false
+          tags: ${{ steps.image.outputs.repo }}:ci
           secrets: |
             NUGET_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}

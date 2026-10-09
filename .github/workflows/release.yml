@@ -165,6 +165,21 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
+      # ghcr rejects a repository name that is not lowercase, and `github.repository_owner` is
+      # "Wixely". The first manual run of this workflow died here, after all four zips had been
+      # built and smoke-tested:
+      #
+      #     invalid tag "ghcr.io/Wixely/cupricut:0.1.0": repository name must be lowercase
+      #
+      # CI builds this same image on every push and could never have caught it, because CI passes
+      # no `tags:` - an untagged build never validates a name. It does now.
+      - name: Work out the image name
+        id: image
+        run: |
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "repo=ghcr.io/$owner/cupricut" >> "$GITHUB_OUTPUT"
+          echo "Image: ghcr.io/$owner/cupricut"
+
       - name: Build and push
         uses: docker/build-push-action@v6
         with:
@@ -173,8 +188,8 @@ jobs:
           # A manual run proves the image assembles; only a tag publishes one.
           push: ${{ needs.version.outputs.tagged == 'true' }}
           tags: |
-            ghcr.io/${{ github.repository_owner }}/cupricut:${{ needs.version.outputs.version }}
-            ghcr.io/${{ github.repository_owner }}/cupricut:latest
+            ${{ steps.image.outputs.repo }}:${{ needs.version.outputs.version }}
+            ${{ steps.image.outputs.repo }}:latest
           secrets: |
             NUGET_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha

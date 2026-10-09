@@ -223,8 +223,22 @@ jobs:
     if: needs.version.outputs.tagged == 'true'
     runs-on: ubuntu-latest
     steps:
+      # `pattern` because this job wants the four zips and nothing else. Taking everything meant
+      # taking `<owner>~<repo>~<id>.dockerbuild` too - a 92 KB buildx build record that
+      # docker/build-push-action uploads on its own - and the first tagged run died on it:
+      #
+      #     Unable to download and extract artifact: Artifact download failed after 5 retries.
+      #
+      # All four zips had already downloaded and verified their digests. Only the build record
+      # failed, and it is not a deliverable: `files: artifacts/**/*` would have attached a build
+      # trace to the release as a download. Two reasons to leave it where it is.
+      #
+      # `merge-multiple` flattens the four one-zip artifacts into artifacts/ rather than nesting
+      # each under its own directory.
       - uses: actions/download-artifact@v4
         with:
+          pattern: cupricut-*
+          merge-multiple: true
           path: artifacts
 
       - name: Publish

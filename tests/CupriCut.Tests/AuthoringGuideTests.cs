@@ -42,6 +42,11 @@ public class AuthoringGuideTests : IDisposable
     [InlineData("translateX", ".b{width:100px;height:40px;} @keyframes k{from{transform:translateX(0);}to{transform:translateX(300px);}}")]
     [InlineData("scale", ".b{width:100px;height:40px;} @keyframes k{from{transform:scale(1);}to{transform:scale(2);}}")]
     [InlineData("rotate", ".b{width:200px;height:40px;} @keyframes k{from{transform:rotate(0deg);}to{transform:rotate(45deg);}}")]
+    // Both arrived with the engine, and both were in the right-hand column until they were not:
+    // clip-path in 0.35.0 (#268), filter from a keyframe in 0.39.0 (#291).
+    [InlineData("filter", ".b{width:200px;height:40px;} @keyframes k{from{filter:blur(0);}to{filter:blur(12px);}}")]
+    [InlineData("clip-path", ".b{width:200px;height:40px;} @keyframes k{from{clip-path:inset(0 0 0 0);}to{clip-path:inset(0 60% 0 0);}}")]
+    [InlineData("rotateY", ".b{width:200px;height:40px;} @keyframes k{from{transform:rotateY(0deg);}to{transform:rotateY(60deg);}}")]
     public void These_properties_animate(string property, string css)
     {
         Assert.True(Box(Doc(css), 0) != Box(Doc(css), 2), $"{property} did not move the box.");
@@ -75,13 +80,15 @@ public class AuthoringGuideTests : IDisposable
             Accent);
     }
 
-    // ---- "One animation per element. Exactly one." -------------------------------------------
+    // ---- "An element may carry a list of animations" -----------------------------------------
 
     [Fact]
-    public void A_comma_separated_list_runs_NEITHER_animation()
+    public void A_comma_separated_list_runs_BOTH_animations()
     {
-        // Not "the first one wins": the shorthand fails to parse and is dropped entirely, leaving
-        // the element at its static CSS values. Silently.
+        // This test used to assert the exact opposite, and it is the reason the guide could be
+        // corrected rather than merely doubted. Up to CupriFace 0.37 a comma-separated list failed
+        // to parse and the whole shorthand was dropped, so NEITHER animation ran and the element
+        // sat at its static values - silently. 0.38.0 (#284) gave the engine room for a list.
         const string Css = """
             .b{width:10px;height:40px;animation:grow 2s linear both, drop 2s linear both;}
             @keyframes grow{from{width:10px;}to{width:300px;}}
@@ -90,8 +97,37 @@ public class AuthoringGuideTests : IDisposable
 
         var box = Box(Doc(Css, animate: false), 2);
 
+        Assert.Equal(300, box.W);
+        Assert.Equal(150, box.H);
+    }
+
+    [Fact]
+    public void Two_RULES_setting_animation_still_collide_and_the_cascade_picks_one()
+    {
+        // The distinction that decides whether CupriCut's timeline rule is still needed, and the
+        // reason 0.38.0 does not simply retire it. A LIST in one declaration runs both animations
+        // (above). Two separate RULES do not merge into a list: `animation` is one property, so
+        // the cascade resolves it the ordinary way and the losing rule's animation never runs.
+        //
+        // That is exactly the shape CupriCut's timeline has - its window is a generated
+        // `.cut-tN { animation: ... }` rule, and the author's motion is in a rule of their own. To
+        // let both run, CupriCut would have to MERGE them into a single declaration rather than
+        // emit its own rule. Possible now; it was not before.
+        const string Html = """
+            <div class="b win"></div><style>
+            body,html{font-family:"Noto Sans";background:#000;}
+            .b{width:10px;height:40px;background:#d9642a;animation:grow 2s linear both;}
+            .win{animation:drop 2s linear both;}
+            @keyframes grow{from{width:10px;}to{width:300px;}}
+            @keyframes drop{from{height:40px;}to{height:150px;}}
+            </style>
+            """;
+
+        var box = Box(Html, 2);
+
+        // The later rule wins outright: `drop` ran, `grow` did not.
+        Assert.Equal(150, box.H);
         Assert.Equal(10, box.W);
-        Assert.Equal(40, box.H);
     }
 
     // ---- "Delays, and the one that silently does not work" -----------------------------------
@@ -147,7 +183,7 @@ public class AuthoringGuideTests : IDisposable
     public void Letter_spacing_widens_text_as_of_0_27_0()
     {
         // This test asserted the opposite until the engine was upgraded, and the measurement is
-        // what changed its mind: 172px either way on 0.26.1, 204px with the spacing on 0.28.1.
+        // what changed its mind: 172px either way on 0.26.1, 204px with the spacing on 0.27.0 and since.
         // Four in five compositions in a downstream corpus use the property, so it was worth the
         // upgrade on its own.
         Assert.True(TextWidth("letter-spacing:8px;") > TextWidth(""));

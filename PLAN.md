@@ -556,10 +556,26 @@ here would give CupriCut a designed starting point without designing one.
     This is a markdown file and an hour, and it is most of the value. Do it before anything with a
     parser in it.
 
-31. **CupriLex — the translator.** HTML and CSS in, CupriFace-safe HTML and CSS out, with a REPORT
+31. **CupriLex — the translator.** *Built, and in its own repository after all:*
+    [Wixely/CupriLex](https://github.com/Wixely/CupriLex), shipped as
+    `CupriLex.Compiler 0.1.0-alpha.2`. It already writes `.cutpkg`, so the hand-off to CupriCut
+    exists. The surviving question for THIS repository is whether to take the package as a
+    dependency or keep the two at arm's length.
+
+    HTML and CSS in, CupriFace-safe HTML and CSS out, with a REPORT
     of what it had to change and what it could not carry. The report matters more than the
     conversion: silently dropping a shader transition is how someone ships a video missing its
     transitions.
+
+    **Two things the plan below got wrong, both settled by measurement.** The corpus survey found
+    that every one of the 172 pinned HyperFrames blocks animates entirely in JavaScript — *zero*
+    use `@keyframes`, `animation:` or `transition:` — so the GSAP compiler is not the hard part of
+    the job, it is the whole job, and there is no subset that works without it. And
+    `letter-spacing` is not dropped with a note any more; CupriFace 0.27.0 implements it.
+
+    Where it stands on CupriFace 0.41.0: **81 of 172 blocks translatable at all, mean 62.6%** of
+    content matched against a headless-browser reference. The other 84 build their DOM with
+    `createElement` or draw into a canvas per frame, and are unreachable by static analysis.
 
     The tractable rewrites are mechanical — `border-left: 2px solid x` to a child div, a repeating
     gradient to explicit stops, `letter-spacing` dropped with a note, `<img>` to `<cupri-image>`.
@@ -568,7 +584,13 @@ here would give CupriCut a designed starting point without designing one.
     against the absolute clock. Tractable for the `tl.from`/`tl.to`/`tl.set` subset a frame pack
     actually uses; not tractable in general, and it should refuse rather than guess.
 
-**Should it be its own repo?** Not yet, and probably eventually. Start it as `Services/Lex/` here,
+**Should it be its own repo?** *Answered: yes, and sooner than this expected.* Both of the
+conditions below turned out to be true almost immediately — the HyperFrames corpus is exactly the
+"corpus of real inputs worth regression-testing against", and a browser-to-engine translator is
+wanted by more than this tool. The reasoning is kept because the conditions were the right ones;
+only the timing was wrong.
+
+The original argument: not yet, and probably eventually. Start it as `Services/Lex/` here,
 because the only way to find out which rewrites matter is to run real packs through it and look at
 the output — and that loop is much tighter inside the thing that renders. Extract it when two
 things are true: there is a corpus of real inputs worth regression-testing against, and something

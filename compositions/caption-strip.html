@@ -44,7 +44,11 @@
   :root {
     --ink: #10131a;
     --paper: #f6f8fc;
-    --accent: #d9642a;
+    /* The deep end of the CupriCut copper ramp, not its middle (#d9642a), because the only
+       thing wearing it is the LIVE pill and that pill carries 15px bold text. White on the
+       mid copper is 3.4:1, and WCAG AA wants 4.5:1 for text this size - bold only counts as
+       large from 18.66px. This is 6.4:1. CupriFace 0.39.0 reports the original as CF0090. */
+    --accent: #9e3a12;
     --check-a: #2b3444;
     --check-b: #222a38;
     --font: "Noto Sans";
@@ -113,9 +117,16 @@
 
   /* Breathing rather than blinking: an overlay that holds on screen needs some life in it, and a
      hard on/off reads as a fault. Infinite is fine here - it is still a pure function of t. */
+  /* The floor is 0.9 because of contrast, not taste, and this is the half CF0090 cannot see:
+     it reads DECLARED colours, so it judged the pill at full opacity and said nothing about the
+     trough. Fading the pill fades its label with it, and both move toward the card underneath, so
+     the ratio falls as it dims. Measured against #f6f8fc on the card: 6.4:1 at opacity 1, 5.3:1
+     at 0.9, 4.3:1 at 0.8, and 2.6:1 at the 0.55 this used to dip to - worse than the 3.4:1 that
+     got the colour changed in the first place. 0.9 is the lowest value that holds 4.5:1 all the
+     way round, which is what a badge carrying a word has to do. */
   @keyframes pulse {
     0%   { opacity: 1; }
-    50%  { opacity: 0.55; }
+    50%  { opacity: 0.9; }
     100% { opacity: 1; }
   }
 </style>

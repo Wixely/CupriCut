@@ -61,12 +61,23 @@ public sealed record TimelinePlan(
 /// behaving. The timed element is reserved instead - see below - which costs a stated rule and no
 /// surprises.</para>
 ///
-/// <para><b>The rule: a timed element's own <c>animation</c> belongs to CupriCut.</b> The engine
-/// runs exactly ONE animation per element - comma-separated lists do nothing, measured in both the
-/// shorthand and the longhand forms - so the window and an author's animation on the same element
-/// cannot both exist. This is the natural shape anyway: the timed thing is a scene, and the motion
-/// belongs to what is inside it. <see cref="Plan"/> reports a violation rather than letting the
-/// author's animation disappear quietly.</para>
+/// <para><b>The rule: a timed element's own <c>animation</c> belongs to CupriCut.</b> The reason
+/// changed in CupriFace 0.38.0 and the rule did not, so it is worth being exact about which is
+/// which. It used to be flatly impossible: the engine ran exactly ONE animation per element and a
+/// comma-separated list ran NEITHER, measured in both the shorthand and the longhand forms. A list
+/// in one declaration now runs every animation in it.
+///
+/// <para>What still holds is narrower, and measured in
+/// <c>AuthoringGuideTests.Two_RULES_setting_animation_still_collide_and_the_cascade_picks_one</c>:
+/// two separate RULES setting <c>animation</c> do not merge into a list. It is one property, so
+/// the cascade resolves it the ordinary way and the losing rule's animation never runs. CupriCut's
+/// window is a generated <c>.cut-tN</c> rule and the author's motion is in a rule of their own, so
+/// they still collide. Letting both run is now POSSIBLE, but it means merging the two into a
+/// single declaration rather than emitting a rule, which is a change to make deliberately.</para>
+///
+/// <para>This is the natural shape anyway: the timed thing is a scene, and the motion belongs to
+/// what is inside it. <see cref="Plan"/> reports a violation rather than letting the author's
+/// animation disappear quietly.</para>
 ///
 /// <para><b>Giving a late scene its own zero.</b> The engine's clock is absolute and stamps no
 /// creation time, so an element that appears at 4s still sees <c>animation-delay</c> measured from
@@ -145,7 +156,8 @@ public static partial class Timeline
             if (DeclaresAnimation(css, classes) || DeclaresAnimation(html, classes) || DeclaresAnimation(attrs, null))
                 problems.Add(
                     $"{window.Describe()} carries its own animation, and CupriCut needs that slot for its window - " +
-                    "the engine runs one animation per element. Move the motion onto a child.");
+                    "the window is a rule of its own, and two rules setting 'animation' do not merge: the cascade " +
+                    "picks one and the other never runs. Move the motion onto a child.");
 
             windows.Add(window);
         }

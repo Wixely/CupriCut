@@ -79,15 +79,22 @@ public sealed class InspectorTests
     {
         // The case that was silently passing: a plain .html composition keeps its rules in <style>,
         // and null as the stylesheet argument turns the CSS pass off completely.
+        //
+        // The property here is a CANARY, not the subject - this test is about CF0050 reaching the
+        // findings at all. It was `text-transform` until CupriFace 0.35.0 implemented it and the
+        // test went quiet for the best possible reason. Expect to replace it again. The current
+        // list of properties the engine still reports as ignored is measured per release by
+        // CupriLex's conformance matrix (`--compare` two of conformance/support/*.json); as of
+        // 0.41.0 it is mix-blend-mode, text-shadow and align-self.
         const string Html = """
             <div class="a"></div>
-            <style>body,html{font-family:"Noto Sans";} .a { text-transform: uppercase; width:10px; height:10px; }</style>
+            <style>body,html{font-family:"Noto Sans";} .a { mix-blend-mode: difference; width:10px; height:10px; }</style>
             """;
 
         using var harness = new Harness();
         var x = Inspector.Examine(harness.Cut, harness.WriteComposition("ls.html", Html));
 
-        Assert.Contains(x.Findings, f => f.Code == "CF0050" && f.What.Contains("text-transform"));
+        Assert.Contains(x.Findings, f => f.Code == "CF0050" && f.What.Contains("mix-blend-mode"));
         Assert.Equal("warnings", x.Verdict);
     }
 
@@ -181,7 +188,7 @@ public sealed class InspectorTests
         // property it does not contain, and passing whenever it was run alone.
         const string Ignores = """
             <div class="a">x</div>
-            <style>body,html{font-family:"Noto Sans";} .a { text-transform: uppercase; width:10px; height:10px; }</style>
+            <style>body,html{font-family:"Noto Sans";} .a { mix-blend-mode: difference; width:10px; height:10px; }</style>
             """;
         const string Plain = """
             <div class="b">x</div>

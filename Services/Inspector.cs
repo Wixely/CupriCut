@@ -243,7 +243,7 @@ public static partial class Inspector
     /// <para><b>It currently knows nothing, and that is the design working.</b> The one cause it
     /// knew was <c>rgb()</c> inside a border shorthand, measured on CupriFace 0.26.1 and raised as
     /// <see href="https://github.com/Wixely/CupriFace/issues/196">CupriFace#196</see>, where it
-    /// cost a downstream corpus 35 of 187 compositions. 0.26.2 fixed it and 0.28.1 is what this
+    /// cost a downstream corpus 35 of 187 compositions. 0.26.2 fixed it and 0.41.0 is what this
     /// tool pins, so the advice was deleted rather than left to accuse a declaration that now
     /// builds. The hook stays for the next one.</para></summary>
     public static string? LikelyCause(Composition loaded)

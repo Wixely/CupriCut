@@ -3,7 +3,7 @@
 Everything you need to compose for CupriCut, and every way the engine differs from a browser.
 
 **This document is measured, not remembered**, and the measurements are **tests**. Every claim
-below was produced by rendering a document and reading the pixels, against **CupriFace 0.28.1** —
+below was produced by rendering a document and reading the pixels, against **CupriFace 0.41.0** —
 and each one is asserted in `AuthoringGuideTests`, so this page is a description of what that file
 measures rather than prose about the engine.
 
@@ -50,7 +50,9 @@ rendered box at `t=0` with `t=2`:
 | `transform: translateX/Y` | `border-radius` |
 | `transform: scale` | `font-size` |
 | `transform: rotate` | `background`, `background-color` |
-| | `color` |
+| `transform: rotateX/Y/Z` | `color` |
+| `filter` | |
+| `clip-path` | |
 | | a gradient's colour stops |
 | | `visibility`, `display` |
 
@@ -66,28 +68,40 @@ nothing — so the failure looks like "my animation did not play" rather than li
 - **To show and hide**, animate `opacity`, not `visibility` or `display`. For a hard cut rather
   than a fade, put two `opacity` stops adjacent to each other (`49.99%` and `50%`). That is exactly
   what the [timeline](#the-timeline) generates.
-- **To reveal by wiping**, animate `width` or `height` on a parent with `overflow: hidden`. Layout
-  re-runs, so the content behind is revealed rather than squashed.
+- **To reveal by wiping**, animate `clip-path: inset()`, or animate `width`/`height` on a parent
+  with `overflow: hidden`. The second re-runs layout, so the content behind is revealed rather
+  than squashed; the first does not move the content at all, which is usually what you want.
 
-### One animation per element. Exactly one.
+### A list of animations works. Two rules do not.
 
-A comma-separated list does **not** run both animations. It runs **neither** — the declaration
-fails to parse and the whole `animation` shorthand is dropped, leaving the element at its static
-CSS values, silently.
+**This section said the exact opposite until CupriFace 0.38.0**, and the distinction it now draws
+is narrow enough to be worth stating carefully.
+
+A comma-separated list in **one declaration** runs **every** animation in it. Measured: both the
+width and the height below reach their end values.
 
 ```css
-/* BROKEN. Not "the first one wins" - nothing happens at all. */
+/* Fine. Both run. */
 .bar { animation: grow 2s linear both, drop 2s linear both; }
 ```
 
-If an element needs two things to happen, you have two options, and the first is usually right:
+Up to 0.37 this ran *neither* — the declaration failed to parse, the whole shorthand was dropped,
+and the element sat at its static values, silently. If you are reading older compositions in this
+repository, that is why several of them put two shapes into one `@keyframes` block.
 
-1. **Put the second animation on a child.** A wrapper that scales around a child that fades.
-2. **Put both into one `@keyframes` block**, using percentages for the timing. `bar-race.html`
-   does this for an overtake that has to pause, surge and settle: three shapes in one animation,
-   because two animations on one element do nothing.
+What still bites is **two separate rules** setting `animation` on the same element:
 
-This is also why a timed element's own `animation` slot **belongs to CupriCut** — see the
+```css
+/* Only `drop` runs. `grow` never happens. */
+.bar  { animation: grow 2s linear both; }
+.wide { animation: drop 2s linear both; }   /* <div class="bar wide"> */
+```
+
+`animation` is one property, so two rules do not merge into a list — the cascade picks a winner
+and the loser is gone, with no diagnostic. Keep an element's animations in **one** declaration.
+
+This is also why a timed element's own `animation` slot still **belongs to CupriCut** — its window
+is a generated rule, so it collides exactly like the pair above. See the
 [timeline](#the-timeline).
 
 ### Delays, and the one that silently does not work
@@ -149,9 +163,11 @@ and not a fade. A composition with a timeline is **still pure in `t`**.
 
 Two rules, both the engine's rather than choices:
 
-**A timed element's own `animation` belongs to CupriCut.** Since the engine runs exactly one
-animation per element, the window and your animation cannot share the slot. Put your motion on a
-child. Writing one anyway is reported (`CUT003`) rather than silently eating the window.
+**A timed element's own `animation` belongs to CupriCut.** Not because the engine is limited to
+one animation — since 0.38.0 it is not — but because the window is emitted as a rule of its own,
+and two rules setting `animation` do not merge: the cascade picks one and the other never runs.
+Put your motion on a child. Writing one anyway is reported (`CUT003`) rather than silently eating
+the window.
 
 **A late scene's children need `var(--cut-start)`.** The clock is absolute and stamps no creation
 time, so a child of a scene appearing at 6s would otherwise have played its entrance at `t=0` and
@@ -237,7 +253,7 @@ a box **3× too tall** and `em`/`%` were ignored outright
 ([CupriFace#181](https://github.com/Wixely/CupriFace/issues/181)), which is why no shipped
 composition sets one. They can now.
 
-**Fixed by the 0.26.1 → 0.28.1 upgrade**, and each one measured rather than read from release
+**Fixed by the 0.26.1 → 0.41.0 upgrades**, and each one measured rather than read from release
 notes:
 
 | | |
@@ -246,7 +262,16 @@ notes:
 | `inset` | **Works** as of 0.27.0, shorthand and the four longhands. A full-bleed overlay sized with it used to have no size at all. |
 | `border: 2px solid rgb(…)` | **Builds** as of 0.26.2. It used to throw out of the colour parser and take the whole document with it — `CupriFace#196`, which cost a downstream corpus 35 of 187 compositions. The advice this tool used to print for it has been deleted. |
 | `.woff2` fonts | **Load** as of 0.28.1, through the optional `CupriFace.Woff2` package. This is the format every font pipeline emits and Google Fonts serves; under `FontPolicy.RegisteredOnly` it was not a silent substitution but a failed render. |
-| inline `<svg>` | Still not drawn here. The engine can as of 0.27.0, through the optional `CupriFace.Svg` package and a `UseSvg()` call, which this tool does not yet make. |
+| two animations on one element | **Run** as of 0.38.0, in a single comma-separated declaration. See [above](#a-list-of-animations-works-two-rules-do-not) for the half that still does not. |
+| `clip-path` | **Works** as of 0.35.0 — `inset()` with `round`, `circle()`, `ellipse()`, `polygon()` — and it **animates**, which makes it the cheapest wipe available. |
+| 3D transforms | **Work** as of 0.35.0: `rotateX/Y/Z`, `translate3d`, `perspective` on a parent, `backface-visibility`. `rotateY` animates. |
+| `filter` | **Animates** from a `@keyframes` stop as of 0.39.0. It painted from a rule before that and was never read from a keyframe. |
+| `::before` / `::after` | **Generated** as of 0.34.0, given `content` and a size. |
+| `text-transform` | **Works** as of 0.35.0 (`uppercase`, `lowercase`, `capitalize`). |
+| `background-image: url(…)`, `background-size`/`-position`/`-repeat` | **Work** as of 0.35.0. A `data:` URI in `url()` no longer ends the declaration at its first `;`. |
+| `z-index` | **Orders siblings** as of 0.39.0. There are still no stacking contexts: the sort is per parent. |
+| `visibility: hidden` | **Works** as of 0.41.0 — the box keeps its space and paints nothing, and a `visibility: visible` child of a hidden parent is painted. It still does **not** animate. |
+| inline `<svg>` | Still not drawn here. The engine can, through the optional `CupriFace.Svg` package and a `UseSvg()` call, which this tool does not yet make. |
 
 **Still does not work:**
 
@@ -305,8 +330,10 @@ The CLI exits non-zero only on errors, so a CI step can gate on it.
 Before calling a composition finished:
 
 - [ ] `body, html { font-family: "..."; }` names a **registered** family.
-- [ ] Every animated property is in the left-hand column: `width`, `height`, `opacity`, `transform`.
-- [ ] No element has two animations. Check for a comma in any `animation:` line.
+- [ ] Every animated property is in the left-hand column: `width`, `height`, `opacity`,
+      `transform`, `filter`, `clip-path`.
+- [ ] An element's animations are all in **one** declaration. Two rules setting `animation` on the
+      same element silently lose one.
 - [ ] No `calc()` in an `animation-delay`.
 - [ ] Timed elements (`data-start`) carry no `animation` of their own — it is on their children.
 - [ ] Children of a late scene use `animation-delay: var(--cut-start)`.

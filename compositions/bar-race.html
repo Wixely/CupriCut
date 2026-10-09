@@ -8,7 +8,9 @@
 
   The overtake is the interesting part and it is done with keyframe percentages rather than delays.
   A bar that must pause, surge and settle needs three shapes in one animation; splitting that across
-  animation-delay would need two animations on one element, which the engine does not do.
+  animation-delay would have needed two animations on one element, which the engine could not do
+  when this was written. CupriFace 0.38.0 allows a comma-separated list, so that is now a choice
+  rather than a constraint - kept because the percentages say what the motion IS in one place.
 
   Useful as it stands: quarterly numbers, a poll, a league table, downloads by week. The bars are
   percentages of the track, so swapping the figures is a text edit and one width per row.
@@ -138,8 +140,9 @@
     margin-left: 22px;
   }
 
-  /* Row one is behind for the first two seconds, then surges past. Three shapes in one animation,
-     because two animations on one element do nothing here.
+  /* Row one is behind for the first two seconds, then surges past. Three shapes in one animation.
+     Two animations on one element did nothing at all until CupriFace 0.38.0; they run now, but
+     one keyframes block still describes this motion better than two racing declarations would.
 
      The comments below sit outside the @keyframes blocks, which is only a habit now. Writing this
      composition against CupriFace 0.25.0, a comment INSIDE one silently corrupted the stop

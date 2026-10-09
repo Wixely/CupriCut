@@ -7,10 +7,11 @@
 
   Two rules, and both are the engine's rather than choices:
 
-  1. A TIMED ELEMENT'S OWN `animation` BELONGS TO CUPRICUT. The engine runs exactly one animation
-     per element - comma-separated lists do nothing - so the generated window and an author's
-     animation cannot share one. Put the motion on a child, which is the natural shape anyway: the
-     timed thing is a scene, and the scene is not what moves.
+  1. A TIMED ELEMENT'S OWN `animation` BELONGS TO CUPRICUT. Not because the engine is limited to
+     one animation - since 0.38.0 a comma-separated list runs all of them - but because the
+     generated window is a RULE of its own, and two rules setting `animation` do not merge into a
+     list: the cascade picks one and the other never runs. Put the motion on a child, which is the
+     natural shape anyway: the timed thing is a scene, and the scene is not what moves.
 
   2. A LATE SCENE NEEDS `var(--cut-start)`. The engine's clock is absolute and stamps no creation
      time, so a child of a scene that appears at 3s would otherwise have played its entrance at 0

@@ -16,7 +16,7 @@ namespace CupriCut.Tests;
 /// <para><b>The trigger changed when the engine was fixed, and that is the point of the file.</b>
 /// It used to be <c>rgb()</c> inside a border shorthand, which threw out of CupriFace 0.26.1's
 /// colour parser - <see href="https://github.com/Wixely/CupriFace/issues/196">CupriFace#196</see>,
-/// where it cost a downstream corpus 35 of 187 compositions. 0.26.2 fixed it, so on 0.28.1 that
+/// where it cost a downstream corpus 35 of 187 compositions. 0.26.2 fixed it, so on 0.41.0 that
 /// document builds and four tests here failed on cue.</para>
 ///
 /// <para>The trigger is now a <c>@font-face</c> whose file is not there. That is not a bug to be
@@ -146,7 +146,7 @@ public class UnbuildableTests(ITestOutputHelper output)
     public void A_refusal_on_the_way_to_a_first_frame_names_what_it_refused()
     {
         // This used to open the document and assert a CompositionLoadException out of
-        // CupriDocument.Load, because CupriFace#196 threw there. On 0.28.1 nothing known throws
+        // CupriDocument.Load, because CupriFace#196 threw there. On 0.41.0 nothing known throws
         // there: the guard around Load is still in place and is now untriggered by any input this
         // repository can produce, which is worth saying plainly rather than testing by pretence.
         //

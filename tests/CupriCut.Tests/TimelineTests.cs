@@ -91,14 +91,23 @@ public sealed class TimelineTests
     [Fact]
     public void A_timed_element_with_its_own_animation_is_reported()
     {
-        // The engine runs ONE animation per element, so the window and the author's cannot both
-        // exist. Losing theirs silently would be the worst outcome.
+        // The window is emitted as a rule of its own, and two RULES setting `animation` do not
+        // merge into a list - the cascade picks one and the other never runs. Losing the author's
+        // silently would be the worst outcome.
+        //
+        // This used to say "the engine runs one animation per element", which was true until
+        // CupriFace 0.38.0 and is not any more. The restriction survived the upgrade; its reason
+        // did not. See AuthoringGuideTests.Two_RULES_setting_animation_still_collide...
         const string Css = ".scene { animation: fade 1s linear both; }";
         var plan = Timeline.Plan("""<div class="scene" data-start="1"></div>""", Css);
 
         var problem = Assert.Single(plan.Problems);
-        Assert.Contains("one animation per element", problem);
+        Assert.Contains("two rules setting 'animation' do not merge", problem);
         Assert.Contains("Move the motion onto a child", problem);
+
+        // The old reason must not come back by copy-paste: it would send an author looking for a
+        // limit the engine no longer has.
+        Assert.DoesNotContain("one animation per element", problem);
     }
 
     [Theory]

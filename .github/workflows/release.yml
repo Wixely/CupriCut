@@ -39,6 +39,8 @@ jobs:
     outputs:
       version: ${{ steps.pick.outputs.version }}
       tagged: ${{ steps.pick.outputs.tagged }}
+      prerelease: ${{ steps.pick.outputs.prerelease }}
+      image: ${{ steps.pick.outputs.image }}
     steps:
       - id: pick
         shell: bash
@@ -54,7 +56,23 @@ jobs:
           echo "$version" | grep -Eq '^[0-9]+\.[0-9]+\.[0-9]+(-[0-9A-Za-z.-]+)?$' \
             || { echo "::error::'$version' is not a semantic version"; exit 1; }
           echo "version=$version" >> "$GITHUB_OUTPUT"
-          echo "Building $version"
+
+          # A hyphen is how semver marks a prerelease, and it settles two things that have to
+          # agree: whether GitHub flags the release as one, and whether :latest moves. Decided
+          # here so they cannot drift apart.
+          case "$version" in
+            *-*) prerelease=true ;;
+            *)   prerelease=false ;;
+          esac
+          echo "prerelease=$prerelease" >> "$GITHUB_OUTPUT"
+
+          # ghcr will not take a capital, and the owner is "Wixely". Derived once and used by the
+          # image tags AND by the release notes - the notes had it wrong on their own after the
+          # tags were fixed, which is what having two copies buys you.
+          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
+          echo "image=ghcr.io/$owner/cupricut" >> "$GITHUB_OUTPUT"
+
+          echo "Building $version (prerelease=$prerelease) as ghcr.io/$owner/cupricut"
 
   zips:
     name: ${{ matrix.rid }} ${{ matrix.kind }}
@@ -165,20 +183,26 @@ jobs:
           username: ${{ github.actor }}
           password: ${{ secrets.GITHUB_TOKEN }}
 
-      # ghcr rejects a repository name that is not lowercase, and `github.repository_owner` is
-      # "Wixely". The first manual run of this workflow died here, after all four zips had been
-      # built and smoke-tested:
+      # The version tag always; :latest only for a stable release. An alpha that moves :latest
+      # means `docker pull ghcr.io/wixely/cupricut` hands somebody a prerelease without their
+      # asking, which is the one tag that cannot be version-pinned by the person using it.
       #
-      #     invalid tag "ghcr.io/Wixely/cupricut:0.1.0": repository name must be lowercase
-      #
-      # CI builds this same image on every push and could never have caught it, because CI passes
-      # no `tags:` - an untagged build never validates a name. It does now.
-      - name: Work out the image name
+      # (The lowercase owner is settled in the version job. The first manual run of this workflow
+      # died right here, after all four zips had been built and smoke-tested, on
+      # `invalid tag "ghcr.io/Wixely/cupricut:0.1.0": repository name must be lowercase` - which
+      # CI could never have caught, because CI passed no `tags:` at all and an untagged build
+      # never validates a name. It does now.)
+      - name: Work out the image tags
         id: image
         run: |
-          owner=$(echo "${{ github.repository_owner }}" | tr '[:upper:]' '[:lower:]')
-          echo "repo=ghcr.io/$owner/cupricut" >> "$GITHUB_OUTPUT"
-          echo "Image: ghcr.io/$owner/cupricut"
+          {
+            echo 'tags<<TAGS'
+            echo '${{ needs.version.outputs.image }}:${{ needs.version.outputs.version }}'
+            if [ '${{ needs.version.outputs.prerelease }}' != 'true' ]; then
+              echo '${{ needs.version.outputs.image }}:latest'
+            fi
+            echo 'TAGS'
+          } >> "$GITHUB_OUTPUT"
 
       - name: Build and push
         uses: docker/build-push-action@v6
@@ -187,9 +211,7 @@ jobs:
           platforms: linux/amd64,linux/arm64
           # A manual run proves the image assembles; only a tag publishes one.
           push: ${{ needs.version.outputs.tagged == 'true' }}
-          tags: |
-            ${{ steps.image.outputs.repo }}:${{ needs.version.outputs.version }}
-            ${{ steps.image.outputs.repo }}:latest
+          tags: ${{ steps.image.outputs.tags }}
           secrets: |
             NUGET_AUTH_TOKEN=${{ secrets.GITHUB_TOKEN }}
           cache-from: type=gha
@@ -210,6 +232,9 @@ jobs:
         with:
           files: artifacts/**/*
           generate_release_notes: true
+          # Without this, softprops publishes a full release whatever the tag says, and an alpha
+          # goes out as the recommended download.
+          prerelease: ${{ needs.version.outputs.prerelease == 'true' }}
           body: |
             ## CupriCut ${{ needs.version.outputs.version }}
 
@@ -221,7 +246,7 @@ jobs:
             |---|---|
             | `*-framework-dependent.zip` | Needs the .NET 10 runtime already installed. Small. |
             | `*-self-contained.zip` | Needs nothing. Large. |
-            | `ghcr.io/${{ github.repository_owner }}/cupricut:${{ needs.version.outputs.version }}` | linux/amd64 and linux/arm64, **with ffmpeg**. |
+            | `${{ needs.version.outputs.image }}:${{ needs.version.outputs.version }}` | linux/amd64 and linux/arm64, **with ffmpeg**. |
 
             Every zip carries both halves: `CupriCut` (the MCP server, and the studio window on a
             desktop) and `CupriCut.Cli` (the `cupricut` command).

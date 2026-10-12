@@ -1,4 +1,4 @@
-﻿using System.Net;
+using System.Net;
 using CupriCut.Configuration;
 using CupriCut.Gui;
 using CupriCut.Hosting;
@@ -16,6 +16,68 @@ namespace CupriCut;
 
 public static class Program
 {
+    /// <summary>
+    /// What an agent is told about this server at the handshake, before it has called anything.
+    ///
+    /// <para><b>Why this exists at all.</b> Tool descriptions answer "what does this verb do"; they
+    /// are read one at a time, by an agent that has already decided to call that verb. Nothing in
+    /// them can say what to do BEFORE deciding - and the single highest-value habit here is one
+    /// that happens before every render rather than inside any one tool. The protocol sends this
+    /// at initialization for exactly that, and warns against repeating what the tool descriptions
+    /// already say, so this does not list the verbs.</para>
+    ///
+    /// <para><b>Why the emphasis falls where it does.</b> Every expensive mistake this repository
+    /// has made has had the same shape: something that rendered cleanly, passed every automatic
+    /// check, and was wrong. Components that expanded to nothing. An inline SVG that laid out and
+    /// painted no pixels. A doctor that reported another document's findings. An author told to
+    /// use the one substitution that did not work. None of them threw, and none could be found by
+    /// reading the markup - which is precisely the situation an agent is in.</para>
+    /// </summary>
+    internal const string AgentInstructions = """
+        CupriCut renders HTML and CSS to frames and video, headlessly, with no browser. The engine
+        is CupriFace, and it is a documented SUBSET of the web platform - not a small browser.
+
+        THE THING THAT CHANGES RESULTS MOST: this engine fails SILENTLY, by design. A CSS property
+        it does not support is ignored. An element it has no primitive for lays out and stays
+        blank. A box too small for its contents does not clip - they paint over whatever follows.
+        A font it cannot register may resolve to whatever the machine has. Nothing throws, nothing
+        logs, and no render fails. A mistake looks exactly like a composition you have not finished
+        yet, so reasoning about the markup will NOT find it.
+
+        So treat these as habits, not as things to do when something looks wrong:
+
+        1. LINT EVERYTHING YOU WRITE OR CHANGE, BEFORE YOU RENDER IT. `lint` is fast, needs no
+           ffmpeg, and is the only thing that sees the silent failures. Run it on anything new,
+           on anything you edited, and on anything you were handed. Run it again after each edit.
+           It reports the engine's own findings (CF*) and what only CupriCut knows (CUT*).
+
+        2. FIX WHAT IS MECHANICAL YOURSELF. A raw <img> that should be <cupri-image>, a property
+           the engine ignores, a box that laid out with no area, a stylesheet that never arrived.
+           These have one right answer and do not need anybody consulted.
+
+        3. TELL THE PERSON ABOUT THE REST, IN THE FINDING'S OWN WORDS. Text too low-contrast to
+           read, a font answered by the machine rather than by a registered file, a composition
+           that is impure in t, a duration that had to move to land on a whole frame. These are
+           judgement calls about someone's design, brand or constraints. Deciding them quietly on
+           their behalf is how an agent ships something nobody asked for. Report them and let the
+           person choose.
+
+        4. LOOK AT THE PIXELS. `contact_sheet` puts a whole motion in one image and is the cheapest
+           way to see that something is wrong; read the PNG rather than inferring from the markup.
+           A clean lint means no SILENT failure was found, not that the animation is any good.
+
+        5. STARTING FROM BROWSER HTML? RUN `translate` FIRST. Any document written for a browser,
+           from anywhere - a page you were sent, a template, a CodePen, an exported design, a frame
+           pack, something you wrote out of habit. It compiles JavaScript motion into @keyframes
+           and applies the rewrites the engine needs, which is work you should not do by hand. Then
+           read its refusals AND lint what came out: the translator reasons about markup and never
+           had the engine, so it cannot know whether what it produced actually draws.
+
+        `docs/AUTHORING.md`, shipped beside this server, is the measured list of what the engine
+        does and does not support, and every claim in it is asserted by a test. Prefer it to what
+        you know a browser would do. Where the two disagree, the engine wins and the guide is right.
+        """;
+
     public static int Main(string[] args)
     {
         // A bare word is never an option this program takes, and it is almost always somebody
@@ -121,7 +183,7 @@ public static class Program
                 sp.GetRequiredService<ILoggerFactory>().CreateLogger<StudioController>()));
 
             builder.Services
-                .AddMcpServer()
+                .AddMcpServer(options => options.ServerInstructions = AgentInstructions)
                 .WithHttpTransport()
                 .WithToolsFromAssembly();
 

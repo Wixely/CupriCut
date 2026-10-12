@@ -17,16 +17,17 @@ The comparable tool, [hyperframes](https://github.com/heygen-com/hyperframes), s
 Chrome frame by frame into FFmpeg and has to build "seekable" adapters to approximate what this gets
 for nothing. CupriCut needs no browser at all.
 
-> **Status: Milestones 1, 1b, 1c, 1d, 2 and 4 are in.** The renderer, the MCP server (25 tools),
+> **Status: Milestones 1, 1b, 1c, 1d, 1e, 2 and 4 are in.** The renderer, the MCP server (26 tools),
 > the CLI, the project file, the studio window and the Docker image all work — frames and video,
 > `export` in eight formats, the `data-start` / `data-duration` timeline, declared events,
 > `inspect`, `lint`, annotations a reviewer draws and an agent reads, and cue analysis for both an
 > audio track and the footage underneath.
 >
-> **Milestone 3 (interaction) was dropped on purpose**, not deferred. What is left is Milestone 5:
-> frame packs, and whether this repository takes
-> [CupriLex](https://github.com/Wixely/CupriLex) — now built, and shipping its own package — as a
-> dependency or keeps it at arm's length. **There is no tagged release yet.**
+> **Milestone 3 (interaction) was dropped on purpose**, not deferred. Dragging a file in from the
+> desktop, inline `<svg>`, and the [CupriLex](https://github.com/Wixely/CupriLex) translator are all
+> in too — three things this plan had refused or left open, withdrawn now that what blocked each of
+> them has gone. What is left of Milestone 5 is one markdown file that needs a frame pack in hand.
+> **Released as `v0.1.0-alpha.1`.**
 >
 > See [PLAN.md](PLAN.md) for the build order and [docs/SCOPE.md](docs/SCOPE.md) for the reasoning
 > and the measurements behind it.
@@ -89,6 +90,25 @@ For a renderer that is still the useful guarantee: a CI runner and a developer l
 agree byte for byte. Fonts must be registered rather than resolved from the machine, which is what
 `FontPolicy.RegisteredOnly` is for, and CupriCut will set it.
 
+## If you are an agent
+
+Read [AGENTS.md](AGENTS.md). The short version, which is also sent to every MCP client at the
+handshake:
+
+**The engine fails silently by design.** An unsupported CSS property is ignored. An element it has
+no primitive for lays out and stays blank. A box too small for its contents does not clip. Nothing
+throws, so a mistake looks exactly like a composition you have not finished, and reading the markup
+will not find it.
+
+So: **`lint` everything before you render it.** Fix what is mechanical yourself — a raw `<img>`, a
+property the engine ignores, a box with no area. **Put the rest to the person**, in the finding's own
+words: contrast, a font answered by the machine rather than a registered file, a stack that lost
+every family it named. The split is not severity, it is ownership. "Use `<cupri-image>`" is a fact
+about the engine. "4.3:1 is under the 4.5:1 this size needs" is a fact about their colours.
+
+Then look at the pixels. A clean lint means no *silent* failure was found, not that the animation is
+any good.
+
 ## Shape
 
 A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSharp`, plus a thin
@@ -108,6 +128,7 @@ A standalone Streamable-HTTP MCP server in the same house style as `GithubMCPSha
 | `render_video` / `export` | …and mux it into the finished file, except where it does not belong | **in** |
 | `analyse_video` | where the cuts are in footage, and where it is calm enough to put words over | **in** |
 | `lint` | will it render the same somewhere else, and does it render what you meant | **in** |
+| `translate` | a document written for a BROWSER — GSAP timelines and all — compiled into a project this engine can draw, with a list of what did not survive | **in** |
 | `probe` | whether ffmpeg answers, which codecs, what the limits are | **in** |
 | `list_fonts` | what is registered, and what each family a composition asked for resolved to | **in** |
 | `calibrate` | what this ffmpeg can really do, and the fastest render parallelism | **in** |
@@ -273,6 +294,61 @@ only on errors, which is what a CI step gates on.
 
 `cupricut inspect` is the same look asked the other way: the timeline as data, plus the assets and
 every font family the composition asked for and what answered it.
+
+### HTML written for a browser
+
+There is no JavaScript engine here, so a document whose motion is a GSAP timeline draws a still
+frame and nothing else. `translate` compiles it instead — the tweens become `@keyframes`, a raw
+`<img>` becomes `<cupri-image>`, and the result is saved as an ordinary project.
+
+**Any browser HTML, not just a frame pack.** A page you were sent, a template, a CodePen, an
+exported design, something you wrote out of browser habit. The source is irrelevant; what matters is
+that it was written for a renderer with more in it than this one. Frame packs are where the
+translator's corpus came from, not the limit of what it reads.
+
+```
+$ cupricut translate --composition hero.html
+saved .../projects/hero.cut.json
+  motion   3 animated, 0 held (3 carrying movement), 2.1s
+  refused  nothing - which means exact or quietly incomplete. Compare a contact sheet against the original.
+
+lint: 1 error(s), 3 warning(s). Run `cupricut lint --composition hero.cut.json` for them.
+```
+
+**Read the refusals, and read the lint.** They answer different questions and you need both. The
+refusals are what the compiler could not carry; the lint is what this engine will not draw. The run
+above is the honest case for running them together: the compiler refused **nothing**, and `lint`
+then found a `repeating-linear-gradient` that parses and paints no pixels at all. Both are right —
+the gradient is valid CSS, and the compiler is not a renderer.
+
+**The assets come with it.** Images and fonts beside the source are inlined into the project under
+the names its own markup already uses, so `src="logo.png"` keeps working and the project is the
+self-contained file it promises to be. Anything the markup names that was not there is reported
+rather than quietly dropped.
+
+**Web fonts can be fetched, and are not by default.** A browser document gets its typeface from a
+font CDN, and without that face the family resolves to nothing here, so the stack is trimmed and the
+text falls back to a generic. `--web-fonts`, or `Cut:AllowWebFonts`, downloads the faces once and
+inlines them; the project is self-contained afterwards and rendering it touches no network. It is off
+by default because it is the only outbound request this tool makes, and a renderer that reaches the
+internet because a document mentioned a hostname is a different kind of program. Off, the requests
+are still listed, so nobody has to wonder where the typeface went.
+
+**Font stacks are rewritten, and that is not cosmetic.** A browser document names an operating
+system's fonts. This renderer registers faces and answers a stack **by its names, not by its
+order** — so one unknown family anywhere in a list refuses the whole declaration, with a registered
+family and a generic sitting right after it. Before this was handled, a title styled
+`font-family: "Segoe UI", system-ui, sans-serif` translated cleanly, refused nothing, and produced a
+project that could not be rendered at all. Names nothing can answer are dropped, which is what a
+browser does in effect: it walks the list and uses the first face it has.
+
+A stack that loses *every* name it had is raised as a **decision**, not resolved. Nothing here will
+pick a typeface nobody asked for.
+
+The translation happens **once**. What it saves is a project like any other, and nothing consults
+the translator again when that project renders. The work itself is
+[CupriLex](https://github.com/Wixely/CupriLex), a separate repository with its own corpus of real
+blocks; CupriCut takes its compiler as a package and builds the project with its own types.
 
 ### A composition can be a sequence
 
@@ -476,9 +552,22 @@ just a directory under the project root — not an index, not a field in a file 
 here and organising them in a file manager are the same act, and neither can get out of step with
 the other. `move_project` and `create_folder` do the same from an agent.
 
-Dragging a file **in from the desktop** does not work, and is not pretended to: the window host has
-no file-drop support, so there is nothing to hook. **Open in file manager** is the substitute, and
-it is one click.
+Dragging a file **in from the desktop works.** Drop an `.html` on a folder column and it is imported
+into that folder as a project, with the images and fonts beside it inlined under the names its own
+markup already uses — so `src="logo.png"` keeps working and nothing in the markup is rewritten. Drop
+a `.cut.json` or `.cutpkg` to copy it in and open it. Drop an image or a font on the window to add it
+to whatever is open. A source that was not next to the document is **named** rather than quietly
+left out, because a composition missing its logo renders perfectly and looks wrong.
+
+A dropped file may live anywhere, which is the one place CupriCut reads outside
+`Cut:CompositionRoots`. The roots bound what an *agent* can reach; a drop is a person at this machine
+pointing at their own file. Nothing about what may be **written** changes — an import goes through
+the same `SaveProject` into the same project root, and there is no tool for this, so the MCP server
+cannot raise a drop.
+
+Dragging **out** to the desktop still does not work and is not pretended to: it needs a platform drag
+source and a data promise, which is a far larger thing than accepting a drop. **Open in file
+manager** remains the substitute, and it is one click.
 
 Annotations are stored **in the project**, because that is already the file a later run opens, and
 in **normalised 0–1 coordinates**, so a note drawn on a 1280×720 preview still means the same region
@@ -571,8 +660,18 @@ safe to apply to markup CupriCut did not write.
 Built on **CupriFace 0.41.0**. The GUI is itself a `CupriApp` — CupriCut's interface is drawn by the
 engine CupriCut renders with.
 That is why it was cheap: the preview is an `ISurfaceSource`, the seam the engine already has for
-live pixel producers, so it costs no PNG encode; and the region drag is `OnPointer`, the same one a
-pinch gesture uses. Nothing here needed an engine change.
+live pixel producers, so it costs no PNG encode; the region drag is `OnPointer`, the same one a
+pinch gesture uses; and a file dragged in from the desktop is `OnFileDrop`, which the engine
+presents the same way it presents a card dragged between two columns — markup names the target with
+a class, the app registers one handler. Which is right, because they are the same gesture to the
+person doing it, and the window's edge should not be where it stops working. Nothing here needed an
+engine change.
+
+Two of the engine's **optional** packages are installed, in one function, because neither is
+optional to this tool. `CupriFace.Woff2` decodes the format every font pipeline emits and Google
+Fonts serves — without it the strict font policy keeps its promise by failing on the commonest web
+font there is. `CupriFace.Svg` draws inline `<svg>`; without it an SVG laid out at its CSS size,
+painted nothing, settled cleanly and linted clean, which is the worst way for a logo to go missing.
 
 ## Transparency
 

@@ -222,12 +222,175 @@ built on, so it goes first.
     declined rather than accepted: projects are listed by name and there is nowhere to record a
     hand-made order, so taking the drag would show a reordering that vanished on the next refresh.
 
-    **Drag and drop in and out of the OS is not possible and was not faked.** The desktop host has
-    no file-drop support at all — checked, not assumed — so dragging an `.html` in from Explorer, or
-    a project out to the desktop, cannot work without a host change. The honest substitutes are
-    there instead: **Open in file manager** on the projects page, and **Open folder** after an
-    export. Raised as [CupriFace#182](https://github.com/Wixely/CupriFace/issues/182), because it is a
-    gap for any desktop application built on it rather than a CupriCut problem.
+    ~~**Drag and drop in and out of the OS is not possible and was not faked.**~~ **Half of this is
+    now built.** The refusal was right when it was written: the desktop host had no file-drop
+    support at all — checked, not assumed — so dragging an `.html` in from Explorer could not work
+    without a host change. It was raised as
+    [CupriFace#182](https://github.com/Wixely/CupriFace/issues/182) because it was a gap for any
+    desktop application on the engine rather than a CupriCut problem, and **it was fixed** —
+    `OnFileDrop`, a `cupri-drop` target class, `DroppedFile`, and a `DropDriver` so the gesture can
+    be scripted. See item 26.
+
+    **Dragging OUT is still not possible and is still not faked.** It needs a platform drag source
+    and a data promise, which is a different and much larger thing than accepting a drop, and the
+    upstream issue says so explicitly. **Open in file manager** and **Open folder** remain the
+    honest substitutes, and they remain substitutes for the wrong half of the gesture.
+
+## Milestone 1e — withdrawing three refusals
+
+Nothing new was designed here. Every item is something this plan had refused, deferred or left
+open, where the thing that blocked it has since gone — which makes the interesting work *checking*
+rather than building, and two of the three turned out to have been wrong for a while.
+
+26. **OS file drop.** ~~Impossible~~ **Done**, now that
+    [CupriFace#182](https://github.com/Wixely/CupriFace/issues/182) is closed. Drop an `.html` on
+    the window and it is imported as a project; drop a `.cut.json` or `.cutpkg` and it is copied in
+    and opened; drop it on a folder column and it lands in that folder; drop an image or a font and
+    it is inlined into whatever is open. `Services/Dropped.cs` is the whole of it, and it is a
+    service rather than window code because the classification and the import need no window —
+    `DropDriver` scripts the gesture, so the window's path is tested headlessly too.
+
+    **A dropped composition's assets come with it, and nothing in its markup is rewritten.** A
+    project resolves an asset by looking its source string up in its own dictionary, so inlining
+    `logo.png` under the key `logo.png` is the entire mechanism and `src="logo.png"` keeps working.
+    A source that was *not* beside the document is named in the answer and in the project's notes
+    rather than dropped quietly — a composition missing its logo renders perfectly and looks wrong,
+    which is the worst shape a failure can take here, and the fix is to drag the logo in too.
+
+    **This is the one place in the codebase that reads outside `Cut:CompositionRoots`, and it is
+    not a hole in the safety model.** The roots bound what an *agent* can reach, because every other
+    way in is a request arriving over a socket. A drop is a person at this machine pointing at
+    their own file in a window they opened, and refusing it for being outside a configured
+    directory would refuse the only thing the gesture can mean. What does not move is the WRITE
+    surface: an import goes through `SaveProject` into the project root, exactly where
+    `save_project` puts things, and there is no tool for this — the MCP server cannot raise a drop.
+
+    **There is no drag-over highlight, and that is a decision rather than an omission.** The engine
+    offers one (`:drop-over`, lit by `DispatchDropOver`) and the desktop host never calls it: GLFW
+    reports the drop and nothing before it. A highlight styled here would be a rule that never
+    fires on the one platform this window runs on, so the affordance is static text that is always
+    visible. Checked in the host's own source, not assumed.
+
+    One defect of CupriCut's own, found by the test rather than by using it: the handler passed the
+    window a bare project stem, and the window addresses projects by file name. The import worked
+    and the preview then failed with "no composition at 'hero'" — an unfortunate shape, because
+    the gesture appeared to half-work. `DropResult.Name` is a path relative to the project root with
+    its extension now, which is what `ListProjects` returns and what everything else expects.
+
+27. **Inline `<svg>`.** ~~Not drawn here~~ **Done**, and it was the component-registry bug again.
+    The engine's parser keeps an `<svg>` whether or not anything can draw it, so without the
+    optional `CupriFace.Svg` package it laid out at its CSS size, painted **nothing**, settled
+    cleanly and passed `lint`. Measured on the shipped test: **0 pixels before, 6400 after**, on an
+    80x80 red square.
+
+    **The lint half was worse than the render half.** The engine's `<svg>` check reads a marker
+    `UseSvg` writes during the rebuild, and `CupriDoctor.Check` only sees it if the caller passes
+    `configure:` — which CupriCut did not. So an inline SVG was reported as **CF0030, an error**,
+    with the advice *"add the CupriFace.Svg package and call doc.UseSvg()"*: a package the tool
+    would now ship and a method it would now call. Any composition carrying an SVG failed `lint`
+    outright and the CLI exited non-zero. That is the CUT006 mistake for the third time, so the
+    opt-ins moved into one function — `CupriCutService.UseOptionalPackages` — which the renderer
+    calls and the doctor is handed, because two callers that must agree should not be two lists.
+
+28. **The CupriLex question.** ~~Dependency or arm's length?~~ **Decided: a dependency, and on the
+    compiler only.** `CupriLex.Compiler 0.1.0-alpha.2`, with a `translate` tool and a `translate`
+    CLI verb over one function in `Services/Translate.cs`.
+
+    CupriLex can also write a `.cutpkg` itself, and **that half is not used — and the reason is
+    worth getting right, because the first version of this entry got it wrong.** It is not that
+    CupriLex's packaging is poor. `.cutpkg` is *this repository's* format, and CupriLex wrote one
+    because that was the only way to hand over a translation **with its assets attached** — the
+    faces it had downloaded, the images beside the block. To do that it had to re-implement the
+    schema from a hand-copied DTO, because a project reference would have made the compiler need a
+    renderer in order to build. A fair trade, while nothing on this side could do the bundling.
+
+    Something can now, and it is `Services/Translate.cs`: the assets are gathered here, the faces
+    are fetched here, and `CutProject` and `CutPackage` are written by the code that owns them. So
+    the translation crosses the boundary as what it actually is — markup, a stylesheet and a list of
+    refusals — and nobody keeps a second copy of a schema they do not own.
+
+    **The honest risk Milestone 5 named is unchanged**, which is why the reference is safe to take:
+    a composition is translated ONCE, and nothing consults the translator at render time. A project
+    that has been imported is just a project. The renderer does not know the type exists.
+
+    **The refusals are the product, and the translation is linted.** Measured on a block in the
+    shape the corpus actually comes in — tokens as custom properties, a raw `<img>`, a repeating
+    gradient, three GSAP tweens: the compiler carried all three tweens into `@keyframes`, measured
+    the motion at 2.1s, and **refused nothing**. `lint` then reported the
+    `repeating-linear-gradient` that parses and paints no pixels at all, plus a rewritten `<img>`
+    that laid out 520x0. Both answers are correct — the gradient is valid CSS and the compiler is
+    not a renderer — and either alone is misleading. That is the whole argument for running the two
+    together, and it is why `Translate.Of` returns a verdict rather than leaving the caller to
+    discover the second half later.
+
+    **The assets travel with it, which the first version of this did not do and had to.** Measured:
+    a document beside a `logo.png` produced a project with **zero assets** and
+    `src="file:///C:/Users/.../compositions/bundle/logo.png"` in its markup. It rendered perfectly
+    on this machine, in that directory, and nowhere else — which breaks the one promise a project
+    makes. The cause was handing the compiler the source directory, which makes it rebase every
+    relative reference to an absolute `file:///` URL: correct for a renderer about to run here, and
+    wrong for a file meant to be copied. Left relative and inlined instead, under the names the
+    markup already uses, which is the same thing the studio's drop import does — one function now,
+    `Services/Bundle.cs`, because two importers doing the same job must not disagree about it.
+
+    **And web fonts can be fetched, which is the other half of what CupriLex used its packaging
+    for.** A browser document gets its typeface from a font CDN; without the face, the family
+    resolves to nothing and the stack below trims it away, so the composition is silently set in
+    something nobody chose. `Cut:AllowWebFonts` — **off by default**, because it is the only
+    outbound request this tool makes — fetches the faces once and inlines them, after which the
+    project is self-contained and rendering touches no network. Off, the requests are still
+    *reported*, so the answer says what turning it on would get.
+
+    The consent is CupriCut's own type rather than one of the compiler's three: "everything",
+    "nothing" and "these hosts" are all available and none of them says the true policy, which is
+    about the KIND of request. Faces and the stylesheets that name them, nothing else. The
+    asymmetry is the argument: a missing image is a visible hole somebody can fix by dropping the
+    file in, and the markup still names it; a missing face is not recoverable that way.
+
+    **And the font stacks are rewritten, which the first version of this did not do and had to.**
+    Measured: a title styled `font-family: "Segoe UI", system-ui, -apple-system, sans-serif`
+    translated cleanly, refused nothing, and produced a project that **could not be rendered at
+    all** — `FontNotRegisteredException` naming Segoe UI. Two reasonable decisions collide to cause
+    it. `FontPolicy.RegisteredOnly` is always on, because a family answered by whatever this
+    machine has installed is the difference between a render CI reproduces and one it resembles.
+    And the engine answers a stack **by its names, not by its order**: one unknown name anywhere
+    refuses the whole declaration, with a registered family and a generic sitting right after it.
+    Most of the web names an operating system's fonts, so most of the web was fatal here rather
+    than merely unlucky.
+
+    `Fallbacks.Trim` is CupriLex's, and exists for exactly this. **CupriCut passes it something
+    CupriLex cannot have**: the families this installation has actually registered, not just the
+    ones the document carries in `@font-face`. CupriLex writes a package without knowing which
+    renderer will open it; CupriCut *is* the renderer. That is the difference between keeping Noto
+    Sans in a stack and throwing it away as unanswerable. Same document, after: **clean**.
+
+    A stack that loses *every* name it had is raised as a decision rather than resolved. Neither
+    this tool nor the compiler will pick a typeface nobody asked for — the choice belongs to
+    whoever is publishing, and flagging it is the whole point. It is in the answer, and in the
+    project's notes as a line beginning `DECIDE:`, because the answer is gone by the next session
+    and the file is what that session opens.
+
+29. **What an agent is told, before it calls anything.** [`AGENTS.md`](AGENTS.md) and
+    [`CLAUDE.md`](CLAUDE.md), which this repository did not have while both its siblings did — and
+    `Program.AgentInstructions`, sent to every MCP client at the initialization handshake.
+
+    **The handshake is the part that matters.** A tool description answers "what does this verb
+    do", and is read by an agent that has already decided to call that verb. Nothing in one can say
+    what to do *before* deciding, and the highest-value habit here happens before every render
+    rather than inside any one tool: **lint it, fix what is mechanical, and put the judgement calls
+    to the person.** The protocol sends instructions at initialization for exactly this and warns
+    against repeating the tool descriptions, so they do not list the verbs.
+
+    The split that matters is not severity, it is **ownership**. "Use `<cupri-image>`" is a fact
+    about the engine and an agent should just do it. "4.3:1 is under the 4.5:1 this text size
+    needs", or a stack that now falls back to a generic, is a fact about somebody's colours and
+    somebody's brand. Deciding those quietly is how an agent ships something nobody asked for.
+
+    Tested, because a wiring mistake here is invisible from every direction: the server starts,
+    every tool works, and the client simply never receives them.
+
+What remains of Milestone 5 is **item 30**, unchanged: appending the CupriFace overlay to a
+particular pack's spec, which still needs a pack in hand.
 
 ## Milestone 2 — the timeline (3–4 days)
 
@@ -518,7 +681,8 @@ here would give CupriCut a designed starting point without designing one.
 | HyperShader transitions | **no equivalent** | Drop them, and say so rather than rendering something that silently lacks them. |
 | `autoAlpha` visibility juggling | **strip it** | It exists to work around their shader blanketing every scene to `opacity:0`. Carrying the workaround for a problem we do not have is worse than not carrying the feature. |
 
-30. **The prompt overlay.** **Half done: the CupriFace half is [`docs/AUTHORING.md`](docs/AUTHORING.md).**
+30. **The prompt overlay.** **Half done, and the remaining half is the only thing left in this
+    milestone: the CupriFace half is [`docs/AUTHORING.md`](docs/AUTHORING.md).**
     What remains is appending it to a particular pack's spec, which needs a pack in hand. The
     document is the reusable part and it exists.
 
@@ -559,8 +723,10 @@ here would give CupriCut a designed starting point without designing one.
 31. **CupriLex — the translator.** *Built, and in its own repository after all:*
     [Wixely/CupriLex](https://github.com/Wixely/CupriLex), shipped as
     `CupriLex.Compiler 0.1.0-alpha.2`. It already writes `.cutpkg`, so the hand-off to CupriCut
-    exists. The surviving question for THIS repository is whether to take the package as a
-    dependency or keep the two at arm's length.
+    exists. ~~The surviving question for THIS repository is whether to take the package as a
+    dependency or keep the two at arm's length.~~ **Answered: a dependency, and on the compiler
+    only — see item 28.** Its `.cutpkg` writer is not used, because this repository owns that
+    schema.
 
     HTML and CSS in, CupriFace-safe HTML and CSS out, with a REPORT
     of what it had to change and what it could not carry. The report matters more than the
@@ -670,19 +836,41 @@ silently ruined vertical rhythm, and the workaround (never set `line-height`) wa
 would guess. No shipped composition sets one, precisely because of this, so the fix changes none of
 them — it just means the next one can.
 
-**OS file drop** is filed separately as
+~~**OS file drop** is filed separately as
 [CupriFace#182](https://github.com/Wixely/CupriFace/issues/182) — `DesktopHost` surfaces no drop
-event, so no app on this engine can accept a file dragged onto its window. The platform primitives
-(`SDL_DROPFILE`, `glfwSetDropCallback`) are already there in both hosts.
+event, so no app on this engine can accept a file dragged onto its window.~~ **Closed and shipped.**
+The platform primitives (`SDL_DROPFILE`, `glfwSetDropCallback`) were already there in both hosts,
+and the engine now surfaces them: `OnFileDrop`, the `cupri-drop` target class, `DroppedFile`, and a
+`DropDriver` so a drop can be scripted — which it asked for in its own "Related" note, for the
+reason this repository then relied on. Built here as item 26.
 
-Still open, and genuinely not understood:
+**It was closed for three weeks before anyone here noticed**, which is the thing worth writing down
+rather than the feature. A refusal recorded in a plan does not expire when its cause does, and
+nothing in this repository was watching the issue it had filed. The same went for the table below.
 
-| what happened | what is not yet known |
+~~Still open, and genuinely not understood:~~ **Nothing here is open any more.** Re-measured on
+**0.41.0** — this table had been carrying answers from 0.25.0 and 0.26.1 while
+[`docs/AUTHORING.md`](docs/AUTHORING.md) was kept current, which is the one failure mode this
+repository's own rule is meant to prevent: *measure it, then claim it* says nothing about re-reading
+what you claimed last year.
+
+| what happened | what it was |
 |---|---|
-| `align-items: center` centred correctly in isolation, but spread a flex item's children across the full height when a full-height `position:absolute` sibling shared the flex line | Whether an absolutely positioned child is still participating as a flex item. Possibly also a line-height artefact — it has not been re-tested since that was isolated. |
-| `position: absolute` children inside a nested positioned box landed outside their container | Isolated probes behaved correctly, so the cause is something else in the real composition. Same caveat. |
-| `align-self: center` and `margin: auto` do not centre a flex item | Probably simply unsupported; `align-items` on the parent works and is the answer. |
-| `letter-spacing` is silently ignored | CF0050. Still the case on 0.26.1. Reported, at least, so it is not silent to `lint`. |
+| ~~`align-items: center` centred correctly in isolation, but spread a flex item's children across the full height when a full-height `position:absolute` sibling shared the flex line~~ | **Not reproducible on 0.41.0, and the suspicion in the old note was right.** The item lands at y=80 in a 200px line — exactly `(200-40)/2` — and at the *same* pixel with the absolute sibling as without it. So an absolutely positioned child does not participate as a flex item, and centring never cared either way. `EngineQuestionTests` asserts both halves, because "centred" and "centred whether or not something absolute shares the line" are two claims and only the second was ever in doubt. |
+| ~~`position: absolute` children inside a nested positioned box landed outside their container~~ | **Exact on 0.41.0.** The offsets accumulate through both positioned ancestors and the outer margin — 50+20+10 across, 30+10+10 down — to the pixel. |
+| ~~`align-self: center` and `margin: auto` do not centre a flex item~~ | **Still unsupported, and now measured rather than assumed**: `align-items:center` on the parent gives 80, `align-self:center` and `margin:auto 0` on the child both give 0. Asserted in `AuthoringGuideTests`. "Probably simply unsupported" was the right guess; it is no longer a guess. |
+| ~~`letter-spacing` is silently ignored~~ | **Works as of 0.27.0** — 172px without it, 204px with `8px` of it, on the same string. This row said "still the case on 0.26.1" for four engine releases after it stopped being true. |
+
+Both of the first two were almost certainly
+[#181](https://github.com/Wixely/CupriFace/issues/181) all along, which is what the original note
+suspected and had not gone back to check: a `line-height` in `px` produced a line box 3x too tall
+with the glyph at the bottom of it, so the boxes were where they belonged and the text inside them
+was not. Each was found in a real composition where other things were also wrong, and each isolated
+probe behaved correctly — which is exactly the signature of a defect in something else.
+
+**The measurements stay as tests rather than as prose.** Not because either case is suspected now,
+but because a layout defect of this shape is silent: nothing throws, nothing warns, and the render
+is perfectly repeatable. The only thing that tells you is a number.
 | ~~`repeating-linear-gradient()` is reported by NAME~~ | ~~New in 0.25.1~~ **Fixed in 0.26.1.** CF0051 arrived as a substring search over the whole document, so a comment saying a file avoids one — or body text that merely spelled it — failed the lint. [CupriFace#188](https://github.com/Wixely/CupriFace/issues/188). `caption-strip.html` has its sentence back, and `AuthoringGuideTests` now asserts that a property is reported from the declaration rather than the prose. |
 
 ~~`border-left` / `border-right` / `border-bottom` are ignored~~ — **fixed in CupriFace 0.25.0.** The
@@ -701,7 +889,8 @@ kind that look fine from the outside:
 | [#184](https://github.com/Wixely/CupriFace/issues/184) a comment inside `@keyframes` | 545px vs 714px | **545px both** |
 | [#181](https://github.com/Wixely/CupriFace/issues/181) `line-height` | 3x box; `em`/`%` ignored | **all four correct** |
 
-[#182](https://github.com/Wixely/CupriFace/issues/182) (file drop) is still open.
+~~[#182](https://github.com/Wixely/CupriFace/issues/182) (file drop) is still open.~~ **Closed
+2026-09-19, and built here as item 26.** Every issue this section raised is now closed.
 
 **What came back out of CupriCut**, which is the point of raising them:
 
@@ -727,6 +916,12 @@ composition for a declaration it does not have (see the table above).
 | **Fresh document per frame** | No. 15.7× the cost for frames *less* like the finished video, because every transition restarts. |
 | **Composition attributes** | hyperframes' `data-start` / `data-duration` / `data-track`, for agent familiarity. |
 | **Engine changes** | None. CupriCut consumes the `CupriFace` package the way Khalkos3D does; timelines and encoders stay out of the engine. |
+| **The engine's optional packages** | Installed in **one function**, `CupriCutService.UseOptionalPackages` — WOFF 2 and SVG today. Both are optional to the engine and neither is optional to this tool: a format every font pipeline emits, and the format a logo arrives in. The renderer calls it and the doctor is handed it as `configure:`, because a checker told less than the renderer installs reports what the renderer draws as undrawable, and then advises installing what is already there. |
+| **A dropped file may come from anywhere** | The three roots bound what an AGENT can reach, because every other way in is a socket. A drop is a person at this machine pointing at their own file, and it reads outside the roots on purpose. The write surface does not move: an import goes through `SaveProject` into the project root, and no tool can raise a drop. |
+| **The translator is a dependency, and only its compiler** | `CupriLex.Compiler`, for the translation; never its `.cutpkg` writer. That writer exists because bundling a translation's assets had to happen somewhere and CupriCut could not do it; it can now, so the format is written only by the repository that owns it. A translation crosses the boundary as markup, a stylesheet and refusals. Still translated once, into a project; nothing consults it at render time. |
+| **A translation bundles what it refers to** | Images and faces beside the source are inlined under the names the markup already uses, so the project is the self-contained file it promises to be. A reference the compiler had rebased to an absolute `file:///` path is a project that renders on one machine, which is what the first version shipped. |
+| **Fetching a web font is opt-in** | `Cut:AllowWebFonts`, off by default, and the only outbound request this tool makes. A renderer that reaches the internet because a document mentioned a hostname is a different kind of program. Off, the requests are still reported, because a face that never arrives becomes a trimmed family and a typeface nobody chose. |
+| **A translation is linted before it is handed back** | The compiler reasons about markup and never had the engine, so it cannot know whether what it produced draws. Measured: a block it refused NOTHING on carried a `repeating-linear-gradient` that paints no pixels. Both answers are right and either alone misleads. |
 | **Determinism advertised** | Identical pixels per OS, identical layout across OSes. Never "render anywhere, reproduce anywhere". |
 | **Fonts** | `FontPolicy.RegisteredOnly`, always. A family that would resolve to the machine is an error naming the family. |
 | **Project file** | `.cut.json`, self-contained, assets inlined as `data:` URIs. A project is a composition every render tool accepts, and the source of defaults for arguments the caller omitted — never a second render path. |
@@ -749,7 +944,11 @@ composition for a declaration it does not have (see the table above).
   video is not the safe default, it is a broken one — the write surface is bounded by `OutputRoot`,
   which is the actual risk), `SettleTimeoutSeconds` **15**, `MaxInlineImageBytes` **4000000** (over
   it, a tool writes the PNG and returns the path rather than filling a context with base64).
-- **Where the sweep cache lives, if one ever exists.** Milestone 3 note only — replay first.
+- ~~**Whether to take `CupriLex.Compiler` as a dependency.**~~ **Decided: yes, and on its compiler
+  only** — see item 28. Its `.cutpkg` writer stays unused, because this repository owns that schema
+  and writing our own format through another project's copy of it is how a schema drifts.
+- **Where the sweep cache lives, if one ever exists.** Milestone 3 note only — replay first. **The
+  one genuinely open question left in this file**, and it belongs to a milestone that was dropped.
 - ~~**Whether a project may embed a font.**~~ **It may, and it already did.** Measured rather than
   designed: the engine registers a family from an `@font-face` whose `src` is a `data:` URI, and
   `attach_asset` already rewrites `url('name')` in a project's CSS to whatever that asset holds. So

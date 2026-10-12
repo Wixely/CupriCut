@@ -56,6 +56,30 @@ public sealed class CutOptions
     public bool EnableVideo { get; set; } = true;
 
     /// <summary>
+    /// Whether <c>translate</c> may fetch web fonts over the network, so a browser document's
+    /// typeface travels into the project instead of being dropped.
+    /// </summary>
+    /// <remarks>
+    /// <para><b>False by default, and the only outbound request this tool ever makes.</b>
+    /// Everything else here reads the three configured roots and nothing else, and that is worth
+    /// keeping true by default rather than nearly true: a renderer that quietly reaches the
+    /// internet because a document mentioned a hostname is a different kind of program from one
+    /// that does not.</para>
+    ///
+    /// <para>It is worth turning on when you are importing real browser HTML. A block styled in
+    /// Inter and served its face by a font CDN loses that face entirely with this off: the family
+    /// resolves to nothing under the strict font policy, so the stack is trimmed to a generic and
+    /// the composition is set in a typeface nobody chose. With it on, the face is fetched once,
+    /// inlined into the project, and never fetched again - the project is self-contained
+    /// afterwards, and rendering it touches no network.</para>
+    ///
+    /// <para>Off, the requests a document would have made are still <b>reported</b>, so an agent
+    /// can tell someone what turning this on would get them rather than leaving them to wonder
+    /// where the typeface went.</para>
+    /// </remarks>
+    public bool AllowWebFonts { get; set; }
+
+    /// <summary>
     /// Optional ceiling on the number of frames a single call may <b>sweep</b>. <b>Zero, the
     /// default, means no limit</b> - a renderer that cannot make a long clip is not a renderer.
     ///

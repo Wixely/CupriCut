@@ -415,6 +415,20 @@ public sealed class CupriCutService
     }
 
     /// <summary>
+    /// Every font family this installation can answer without reaching for the machine.
+    ///
+    /// <para>What a composition is allowed to name, in other words, given
+    /// <see cref="FontPolicy.RegisteredOnly"/>. Read off a bare document rather than off the
+    /// directories, because registration is the engine's job and a file that failed to load is not
+    /// a family that resolves - which is exactly the gap this is used to close.</para>
+    /// </summary>
+    public IReadOnlyList<string> RegisteredFamilies()
+    {
+        using var bare = OpenDocument(new Composition("(none)", ContentRoot, "<div></div>", null, [], []));
+        return bare.FontReport.RegisteredFamilies;
+    }
+
+    /// <summary>
     /// The engine's optional packages, installed in every document this tool opens.
     ///
     /// <para><b>One function, because two callers must not drift.</b> The renderer opens documents

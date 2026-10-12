@@ -1,4 +1,4 @@
-using System.Net;
+﻿using System.Net;
 using CupriCut.Configuration;
 using CupriCut.Gui;
 using CupriCut.Hosting;
@@ -327,7 +327,7 @@ public static class Program
         string[] verbs =
         [
             "frame", "sheet", "frames", "video", "export", "formats", "probe", "inspect", "lint",
-            "audio", "footage", "calibrate", "fonts", "projects", "project",
+            "translate", "audio", "footage", "calibrate", "fonts", "projects", "project",
         ];
 
         var cli = Path.Combine(AppContext.BaseDirectory, "CupriCut.Cli" + (OperatingSystem.IsWindows() ? ".exe" : ""));

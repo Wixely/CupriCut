@@ -22,6 +22,20 @@
       installs it with UseSvg().
     -->
     <PackageVersion Include="CupriFace.Svg" Version="0.41.0" />
+    <!--
+      The translator, as a dependency rather than at arm's length - the one question Milestone 5
+      left open for this repository. Browser HTML in, CupriFace-safe HTML plus a report out.
+
+      It does NOT depend on CupriFace, and it does not depend on CupriCut: it re-implements the
+      .cutpkg schema from a copied DTO rather than referencing CutProject, so that the compiler
+      does not need a renderer to build. The direction of travel is unchanged by taking the
+      reference - a composition is translated ONCE, into a project, and nothing consults the
+      translator at render time.
+
+      Prerelease, and it will stay prerelease while AngleSharp.Css is: NuGet will not let a stable
+      package depend on a prerelease one.
+    -->
+    <PackageVersion Include="CupriLex.Compiler" Version="0.1.0-alpha.2" />
     <!-- Pinned to the engine's own SkiaSharp: SKImage and SKCanvas cross the boundary. -->
     <PackageVersion Include="SkiaSharp" Version="3.116.1" />
   </ItemGroup>

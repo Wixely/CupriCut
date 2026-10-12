@@ -45,6 +45,8 @@
     <!-- Inline SVG. Same bargain as the decoder above: optional to the engine, not to a tool
          whose job is drawing what an author wrote. See CupriCutService.UseOptionalPackages. -->
     <PackageReference Include="CupriFace.Svg" />
+    <!-- The translator. See Directory.Packages.props, and Services/Translate.cs for the seam. -->
+    <PackageReference Include="CupriLex.Compiler" />
     <PackageReference Include="SkiaSharp" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />

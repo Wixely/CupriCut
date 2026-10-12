@@ -41,6 +41,7 @@ public static class Program
                 "probe" => Probe(cut, encoder),
                 "inspect" => Inspect(cut, opts),
                 "lint" => Lint(cut, opts),
+                "translate" => TranslateVerb(cut, opts),
                 "audio" => Audio(cut, opts),
                 "footage" => Footage(cut, opts),
                 "calibrate" => Calibrate(cut, encoder, opts),
@@ -374,6 +375,79 @@ public static class Program
         return x.Errors > 0 ? 5 : 0;
     }
 
+    /// <summary>
+    /// A browser document, translated into a project.
+    ///
+    /// <para>Named <c>TranslateVerb</c> rather than <c>Translate</c> because
+    /// <see cref="Services.Translate"/> is the function it calls, and a method that shadows the
+    /// type it delegates to is a half-minute wasted by whoever reads it next.</para>
+    /// </summary>
+    private static int TranslateVerb(CupriCutService cut, CommandLine opts)
+    {
+        // Blocking at the one call site rather than threading async through every verb: the CLI's
+        // Main is synchronous, this is the only verb that can touch the network, and it has nothing
+        // else to be doing while it waits.
+        var t = Services.Translate.OfAsync(
+            cut,
+            opts.Require("composition"),
+            opts.Text("name"),
+            (int)opts.Number("width", cut.Options.DefaultWidth),
+            (int)opts.Number("height", cut.Options.DefaultHeight),
+            opts.Number("fps", 30),
+            opts.Has("duration") ? opts.Number("duration", 3) : null).GetAwaiter().GetResult();
+
+        Console.WriteLine($"saved {t.Saved}");
+        Console.WriteLine($"  motion   {t.Animated} animated, {t.Held} held ({t.Animated - t.Held} carrying movement), {t.Seconds:0.###}s");
+
+        // What travels inside the project, which is what makes it a project rather than a copy of
+        // a file that only works in the folder it came from.
+        if (t.Inlined.Count > 0)
+            Console.WriteLine($"  assets   inlined {t.Inlined.Count}: {string.Join(", ", t.Inlined)}");
+        if (t.Missing.Count > 0)
+            Console.WriteLine($"  missing  {string.Join(", ", t.Missing)} - still named in the markup, fill them in with attach_asset");
+        foreach (var request in t.External)
+            Console.WriteLine($"  external {request}");
+
+        // The refusals get the room, because they are the reason to run this rather than a
+        // footnote to it. A translation that reports nothing is the one to distrust.
+        if (t.Refusals.Count == 0)
+        {
+            Console.WriteLine("  refused  nothing - which means exact or quietly incomplete. Compare a contact sheet against the original.");
+        }
+        else
+        {
+            Console.WriteLine($"  refused  {t.Refusals.Count}:");
+            foreach (var refusal in t.Refusals) Console.WriteLine($"    - {refusal}");
+        }
+
+        // Expected and ordinary: these are an operating system's fonts, which the browser only ever
+        // used because it happened to be running on the machine that had them.
+        if (t.DroppedFamilies.Count > 0)
+            Console.WriteLine($"  fonts    trimmed {string.Join(", ", t.DroppedFamilies.Keys)} from the stacks - nothing here answers them");
+
+        // Not ordinary, and the one thing in this output a person has to decide rather than read.
+        foreach (var stack in t.UnresolvedStacks)
+        {
+            Console.WriteLine($"  DECIDE   '{stack}' lost every family it named and now falls back to a generic.");
+            Console.WriteLine($"           Register a face, embed one with attach_asset, or accept it.");
+        }
+
+        var errors = t.Findings.Count(f => f.Level == FindingLevel.Error);
+        var warnings = t.Findings.Count(f => f.Level == FindingLevel.Warning);
+        Console.WriteLine();
+        Console.WriteLine(t.Verdict switch
+        {
+            "clean" => $"lint: clean.",
+            "warnings" => $"lint: {warnings} warning(s). Run `cupricut lint --composition {Path.GetFileName(t.Saved)}` for them.",
+            _ => $"lint: {errors} error(s), {warnings} warning(s). Run `cupricut lint --composition {Path.GetFileName(t.Saved)}` for them.",
+        });
+
+        // Same exit code as `lint`, for the same reason: a warning is a thing to know, and the
+        // refusals above are reported whatever this returns. A translation whose output the engine
+        // cannot draw has failed, however cleanly it compiled.
+        return errors > 0 ? 5 : 0;
+    }
+
     private static int Formats()
     {
         foreach (var format in ExportFormats.Describe())
@@ -663,6 +737,9 @@ public static class Program
             cutOptions.CompositionRoots = [.. roots.Split(Path.PathSeparator, StringSplitOptions.RemoveEmptyEntries)];
         if (opts.Text("output") is { Length: > 0 } output) cutOptions.OutputRoot = output;
         if (opts.Text("ffmpeg") is { Length: > 0 } ffmpeg) cutOptions.FfmpegPath = ffmpeg;
+        // Opt in per run, which is the right shape for the one thing here that reaches the
+        // network. Cut:AllowWebFonts does the same thing permanently for a server.
+        if (opts.Has("web-fonts")) cutOptions.AllowWebFonts = true;
 
         using var loggerFactory = LoggerFactory.Create(b => b
             .SetMinimumLevel(opts.Has("verbose") ? LogLevel.Information : LogLevel.Warning)
@@ -687,6 +764,8 @@ public static class Program
           cupricut formats
           cupricut inspect --composition <file>
           cupricut lint    --composition <file> [--all]
+          cupricut translate --composition <file> [--name <project>] [--width N] [--height N]
+                                                 [--fps 30] [--duration 3] [--web-fonts]
           cupricut probe
           cupricut calibrate [--all] [--no-benchmark] [--apply]
           cupricut fonts  [--composition <file>]
@@ -695,6 +774,13 @@ public static class Program
 
         A .cut.json project works anywhere --composition takes an .html file, and supplies every
         argument you leave out - size, fps, duration, background, codec.
+
+        `translate` is the one verb that reads a document written for a BROWSER - ANY of them, not
+        just a frame pack: a page you were sent, a template, a CodePen, an exported design, or
+        something written out of browser habit - and compiles it into a project this engine can
+        draw. Read the refusals it prints: they are what did not survive, and an animation missing a
+        refused transition is a video missing that transition. It translates once; the project it
+        saves is then an ordinary project that never consults the translator again.
 
         Shared options
           --width N --height N       layout viewport in CSS pixels (default 1280x720)
@@ -719,6 +805,11 @@ public static class Program
           --output <dir>             override Cut:OutputRoot
           --ffmpeg <path>            override Cut:FfmpegPath
           --content-root <dir>       where CupriCut.json, fonts/ and compositions/ live
+          --web-fonts                let `translate` FETCH the web fonts a browser document
+                                     names, and inline them into the project. Off by default -
+                                     it is the only outbound request this tool makes. Without
+                                     it the face is unavailable, so its family is trimmed out
+                                     of the stack and that text falls back to a generic.
           --verbose                  log the sweep, and print stack traces
 
         --duration is a LENGTH: duration x fps frames exactly, so --duration 10 --fps 120 is a

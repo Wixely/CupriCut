@@ -32,6 +32,15 @@ public sealed class StudioApp(StudioModel model) : CupriApp
     /// <summary>The <c>data-</c> attribute the region drag is bound to.</summary>
     public const string MarkAttribute = "data-cut-mark";
 
+    /// <summary>
+    /// The class the engine looks for to decide what a dropped file landed on.
+    ///
+    /// <para>The engine's own name, not one of ours - <c>CupriDocument</c> walks up from the hit
+    /// node looking for exactly this - so it is spelled here once rather than typed into the
+    /// markup four times and misspelled in one of them.</para>
+    /// </summary>
+    public const string DropClass = "cupri-drop";
+
     public override string Title => "CupriCut Studio";
 
     public override int Width => 1440;
@@ -95,8 +104,13 @@ public sealed class StudioApp(StudioModel model) : CupriApp
                      swallows the drag: the hit test returns the placeholder and the walk up its
                      ancestors never passes the element carrying data-cut-mark. Nested, the same
                      walk reaches the stage and the drag works wherever it lands. -->
-                <div class="stage" data-cupri-surface="preview" data-cut-mark="preview">
-                  <div class="placeholder {{PlaceholderClass}}">Select a project to preview a frame.</div>
+                <!-- cupri-drop is the engine's own marker: a file dropped anywhere inside this
+                     box walks up to here and arrives as a FileDropEvent naming this element. It
+                     sits on the same element as the region drag because the two are different
+                     gestures and never both happen. -->
+                <div class="stage cupri-drop" data-cupri-surface="preview" data-cut-mark="preview">
+                  <div class="placeholder {{PlaceholderClass}}">Select a project to preview a frame,
+                    or drag an .html composition onto this window.</div>
                   <div class="spinner {{SpinnerClass}}">rendering&hellip;</div>
                 </div>
               </div>
@@ -193,14 +207,20 @@ public sealed class StudioApp(StudioModel model) : CupriApp
               </div>
             </div>
 
-            <div class="phint">Drag a project by its grip to move it into another folder. Folders are
-              real directories under the project root, so organising them here and in a file manager
-              are the same thing.</div>
+            <div class="phint">Drag a project by its grip to move it into another folder, or drag an
+              .html composition in from a file manager to import it into one. Folders are real
+              directories under the project root, so organising them here and in a file manager are
+              the same thing.</div>
 
             <div class="pempty {{NoFoldersClass}}">No projects yet. Save one with save_project.</div>
 
             <cupri-board>
-              <div data-repeat="Folders" class="fcol">
+              <!-- The column is the drop target, and carries the folder it stands for so a drop
+                   from the OS resolves to a destination the same way a card drag does. The
+                   attribute is on the cupri-reorder too, for the reorder gesture; they are read by
+                   different handlers off different elements and agree because they say the same
+                   thing. -->
+              <div data-repeat="Folders" class="fcol cupri-drop" data-cut-folder="{{Path}}">
                 <div class="fhead">{{Title}}</div>
                 <div class="fcount">{{Count}}</div>
                 <cupri-reorder data-cut-folder="{{Path}}">
@@ -211,7 +231,7 @@ public sealed class StudioApp(StudioModel model) : CupriApp
                     </div>
                   </cupri-reorder-item>
                 </cupri-reorder>
-                <div class="fempty {{EmptyClass}}">Drop a project here</div>
+                <div class="fempty {{EmptyClass}}">Drop a project or an .html file here</div>
               </div>
             </cupri-board>
           </div>

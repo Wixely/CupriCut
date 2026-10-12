@@ -138,6 +138,72 @@ public static partial class CompositionLoader
         src.StartsWith('#') ||
         System.IO.Path.IsPathRooted(src);
 
+    /// <summary>
+    /// Every source a document refers to, exactly as it is written in the markup or the CSS.
+    ///
+    /// <para>"Exactly as written" is the whole point: a project resolves an asset by looking the
+    /// source string up in its own dictionary, so <c>logo.png</c> has to come back as
+    /// <c>logo.png</c> and not as the absolute path the renderer would use. That is what lets an
+    /// import inline the bytes under the name the author already wrote and change no markup at
+    /// all.</para>
+    ///
+    /// <para>Implemented by running the ordinary rewrite with a resolver that answers <c>null</c>
+    /// to everything, which leaves the document untouched and reports what was asked for. Reusing
+    /// the pass rather than its regexes: there is one description of what counts as a source in
+    /// this file, and a second copy of it would diverge over an attribute nobody thought of.</para>
+    /// </summary>
+    public static IReadOnlyList<string> SourcesOf(string html, string? css)
+    {
+        var found = new List<string>();
+
+        string? Collect(string source)
+        {
+            found.Add(source);
+            return null;   // null leaves the markup alone, which is why this can read without writing
+        }
+
+        RewriteHtml(html, Collect, []);
+        if (css is { Length: > 0 }) RewriteCss(css, Collect, []);
+        return [.. found.Distinct(StringComparer.Ordinal)];
+    }
+
+    /// <summary>
+    /// Pull a document's <c>&lt;link rel="stylesheet"&gt;</c> rules into one stylesheet and take
+    /// the tags out, leaving every other source exactly as the author wrote it.
+    ///
+    /// <para>The sibling of <see cref="FromHtml"/>, and deliberately not the same thing: that one
+    /// rewrites every reference to an absolute path, which is right for a render happening now and
+    /// wrong for a project meant to be copied to another machine. This one changes nothing but the
+    /// link tags, so what comes out can still be keyed by name.</para>
+    ///
+    /// <para>A stylesheet that is not there is <b>reported rather than thrown</b>. The caller is an
+    /// import of a file somebody chose by hand: losing the whole document because one of its three
+    /// stylesheets moved is worse than importing it and saying which one is missing.</para>
+    /// </summary>
+    public static (string Html, string? Css, IReadOnlyList<string> Missing) Detach(string html, string directory)
+    {
+        var css = new StringBuilder();
+        var missing = new List<string>();
+
+        var stripped = LinkTag().Replace(html, m =>
+        {
+            var href = FirstGroup(HrefAttr().Match(m.Value));
+            if (string.IsNullOrWhiteSpace(href) || IsResolved(href)) return m.Value;
+
+            var sheet = System.IO.Path.GetFullPath(System.IO.Path.Combine(directory, href.Replace('\\', '/')));
+            if (!File.Exists(sheet))
+            {
+                missing.Add(href);
+                return string.Empty;   // the tag would do nothing here anyway - the engine ignores it
+            }
+
+            css.AppendLine(File.ReadAllText(sheet));
+            return string.Empty;
+        });
+
+        return (stripped, css.Length == 0 ? null : css.ToString(), missing);
+    }
+
     private static string RewriteHtml(string html, Func<string, string?> resolve, List<string> references)
     {
         // Inline <style> blocks carry url() of their own - @font-face above all.

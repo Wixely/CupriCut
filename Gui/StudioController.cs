@@ -74,6 +74,13 @@ public sealed partial class StudioController : IDisposable
         // ELEMENTS, which is why each column carries its folder as an attribute.
         document.OnReorder(OnProjectDropped);
 
+        // Files dragged in from the OS. The counterpart to the line above, and the engine presents
+        // them the same way on purpose: markup names the target with a class, the app registers one
+        // handler, the event carries the element. Which is right, because dragging a card between
+        // two columns and dragging a file in from a file manager are the same gesture to the person
+        // doing it, and the window's edge should not be where it stops working.
+        document.OnFileDrop(OnFilesDropped);
+
         // The region drag. Returning true on Down captures the pointer for this element, so the
         // move and up phases arrive here rather than going to the ordinary gesture recogniser.
         document.OnPointer(StudioApp.MarkAttribute, OnMark);
@@ -340,6 +347,105 @@ public sealed partial class StudioController : IDisposable
             _model.Status = ex.Message;
             _log.LogWarning(ex, "Could not move {Project} to {Folder}", card.File, to);
         }
+    }
+
+    /// <summary>
+    /// Files dragged onto the window from the OS.
+    ///
+    /// <para><b>This was refused for a year, and the refusal was right at the time.</b> The plan
+    /// recorded that drag and drop in and out of the desktop was impossible and had not been
+    /// faked: <c>DesktopHost</c> surfaced no drop event at all, so no application on this engine
+    /// could accept a file dragged onto its window. That was raised as
+    /// <see href="https://github.com/Wixely/CupriFace/issues/182">CupriFace#182</see> - a gap for
+    /// any desktop app on the engine rather than a CupriCut problem - and it is <b>fixed</b>. The
+    /// honest substitutes stay where they were: "Open in file manager" and "Open folder" are still
+    /// the only way OUT, because dragging out needs a platform drag source and a data promise and
+    /// is a different and much larger thing. Accepting a drop was the half that mattered.</para>
+    ///
+    /// <para><b>There is no drag-over highlight, and that is not an omission.</b> The engine offers
+    /// one - <c>:drop-over</c>, lit by <c>DispatchDropOver</c> - and the desktop host never calls
+    /// it: GLFW reports the drop and nothing before it. A highlight styled here would be a rule
+    /// that never fires on the one platform this window runs on, so the affordance is static text
+    /// that is always visible instead. Checked in the engine's own host rather than assumed.</para>
+    ///
+    /// <para><b>The work happens on the UI thread, deliberately.</b> An import reads a composition
+    /// and base64s the images beside it, which is milliseconds at the sizes involved, and doing it
+    /// here means the status line and the project list are already correct by the time the gesture
+    /// ends. A drop of something genuinely large would be felt; the alternative is a progress
+    /// state nobody needs for a logo.</para>
+    /// </summary>
+    public void OnFilesDropped(CupriDocument.FileDropEvent e)
+    {
+        // The folder column it landed on, when it landed on one. Null means the drop was not on a
+        // folder at all - the stage, say - and the import goes to the top level.
+        var folder = e.Target?.GetAttribute(FolderAttribute);
+
+        // Path is the one desktop-only member of a dropped file and is null in a browser. This
+        // window is not a browser, so a null here means something the engine could not locate, and
+        // skipping it is better than guessing at a name.
+        var paths = e.Files
+            .Where(f => !f.IsDirectory && f.Path is { Length: > 0 })
+            .Select(f => f.Path!)
+            .ToList();
+
+        // A folder, or nothing but folders. Reported rather than ignored: dragging a project
+        // folder onto a window is an ordinary thing to try.
+        if (paths.Count == 0)
+        {
+            var folders = e.Files.Count(f => f.IsDirectory);
+            _model.Status = folders > 0
+                ? $"{(folders == 1 ? "That is a folder" : "Those are folders")}. Drop the compositions inside, or make a folder on the Projects page."
+                : "Nothing in that drop could be read.";
+            return;
+        }
+
+        var results = Dropped.AcceptAll(_cut, paths, folder, _model.Selected);
+
+        // Open what arrived, so a drop lands you on the thing you dropped. The LAST accepted
+        // import wins, which is the only defensible choice for a multi-file drop: the OS gives no
+        // order a person would recognise, and showing one of them beats showing none.
+        var opened = results.LastOrDefault(r => r.Kind is DropKind.Composition or DropKind.Project);
+
+        Refresh();
+
+        if (opened is not null)
+        {
+            Open(opened.Name);
+            // Open() writes its own status, and this one is more informative - it says what was
+            // imported and what came with it, which "Opened hero.cut.json" does not.
+            _model.Status = Describe(results);
+            return;
+        }
+
+        _model.Status = Describe(results);
+
+        // An asset went into the open project, so the document the preview holds is now stale -
+        // its <cupri-image src="logo.png"> resolved to nothing a moment ago and resolves to bytes
+        // now. Clearing the shown project is what makes the render loop reopen it.
+        if (results.Any(r => r.Kind == DropKind.Asset))
+        {
+            _shownProject = null;
+            _wake.Set();
+        }
+    }
+
+    /// <summary>One line for the status bar out of however many files were dropped.</summary>
+    private static string Describe(IReadOnlyList<DropResult> results)
+    {
+        // One file is the overwhelmingly common case, and its own message is better than any
+        // summary - it names the assets that came with it and the sources that did not.
+        if (results.Count == 1) return results[0].Message;
+
+        var took = results.Count(r => r.Accepted);
+        var refused = results.Count - took;
+
+        // A refusal's reason is the useful part, so the first one is carried through rather than
+        // reduced to a count. Being told "2 refused" and nothing else is being told to go and
+        // find out.
+        var why = results.FirstOrDefault(r => !r.Accepted)?.Message;
+        return refused == 0
+            ? $"Took {took} file(s): {string.Join("; ", results.Select(r => r.Name).Distinct())}."
+            : $"Took {took} of {results.Count}. {why}";
     }
 
     /// <summary>Make a folder from the field on the projects page.</summary>

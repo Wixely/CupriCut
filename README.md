@@ -27,7 +27,7 @@ for nothing. CupriCut needs no browser at all.
 > desktop, inline `<svg>`, and the [CupriLex](https://github.com/Wixely/CupriLex) translator are all
 > in too — three things this plan had refused or left open, withdrawn now that what blocked each of
 > them has gone. What is left of Milestone 5 is one markdown file that needs a frame pack in hand.
-> **Released as `v0.1.0-alpha.1`.**
+> **Released as `v0.1.0-alpha.2`.**
 >
 > See [PLAN.md](PLAN.md) for the build order and [docs/SCOPE.md](docs/SCOPE.md) for the reasoning
 > and the measurements behind it.

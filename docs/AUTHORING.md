@@ -357,4 +357,5 @@ constraint shaped it. The three most useful to read first:
 - **`scenes.html`** — the timeline, and a late scene giving its children their own zero.
 - **`fixture-card.html`** — a composition that is really a template, with declared events.
 
-All ten lint clean, and a test keeps them that way.
+Every one of them lints clean, and a test keeps them that way. Deliberately not written
+as a count: this line said "ten" while there were eleven of them.

@@ -1,0 +1,364 @@
+<!--
+  The Doomsday Rule, in thirty seconds. Two scenes of fifteen.
+
+  Scene one is WHAT a doomsday is: the one weekday a year hangs on, and the dates that always land
+  on it. Scene two is HOW to find it, worked through on 2026.
+
+  Three engine rules shape the markup, and all three are in docs/AUTHORING.md:
+
+  1. A timed element's own `animation` belongs to CupriCut. The generated window is a rule of its
+     own and two rules setting `animation` do not merge - the cascade picks one and the other never
+     runs. So `.scene` carries no animation and every bit of motion sits on a child.
+
+  2. `calc()` in `animation-delay` is not supported and is silently treated as zero, so a stagger
+     cannot be written as a series of delays - `calc(var(--cut-start) + 2s)` is the obvious thing
+     to reach for and does nothing. Here it is a series of DURATIONS instead: a shared `@keyframes`
+     holds for its first 85% and moves in the last 15%, so a longer duration both starts later and
+     lands later. See the motion block at the foot of the stylesheet for the arithmetic.
+
+  3. Only width, height, opacity, transform, filter and clip-path animate. `left`, `top`, `color`
+     and `background` are accepted, run, and change nothing. Everything below moves with
+     `transform` and fades with `opacity`.
+
+  `var(--cut-start, 0s)` rather than bare `var(--cut-start)`: the fallback means a scene starting
+  at the absolute zero behaves the same as a late one, so the two scenes are written identically
+  and re-timing one does not change how its children are authored.
+-->
+<div class="stage">
+  <div --cupricut-background class="backdrop"></div>
+
+  <!-- ============================ SCENE ONE: what it is ============================ -->
+  <div class="scene" data-start="0" data-duration="15" data-track="main">
+    <div class="eyebrow">A CALENDAR IN YOUR HEAD</div>
+    <div class="title">The Doomsday Rule</div>
+    <div class="rule"></div>
+    <div class="lede">Every year hangs on a single weekday &mdash; that year&rsquo;s
+      <span class="hi">doomsday</span>. These dates all fall on it:</div>
+
+    <div class="row r1">
+      <div class="rowlab">EVEN MONTHS</div>
+      <div class="chip">4/4</div>
+      <div class="chip">6/6</div>
+      <div class="chip">8/8</div>
+      <div class="chip">10/10</div>
+      <div class="chip">12/12</div>
+    </div>
+
+    <div class="row r2">
+      <div class="rowlab">9 TO 5 AT 7-11</div>
+      <div class="chip">9/5</div>
+      <div class="chip">5/9</div>
+      <div class="chip">7/11</div>
+      <div class="chip">11/7</div>
+    </div>
+
+    <div class="row r3">
+      <div class="rowlab">AND THREE MORE</div>
+      <div class="chip wide">3/14 &middot; Pi Day</div>
+      <div class="chip wide">last day of Feb</div>
+      <div class="chip xwide">1/3, or 1/4 in a leap year</div>
+    </div>
+
+    <div class="foot">Learn one weekday a year and every one of these comes free.</div>
+  </div>
+
+  <!-- ====================== SCENE TWO: finding this year's ======================== -->
+  <div class="scene" data-start="15" data-duration="15" data-track="main">
+    <div class="eyebrow">SO WHICH WEEKDAY IS IT?</div>
+    <div class="title">Finding 2026&rsquo;s doomsday</div>
+    <div class="rule"></div>
+
+    <div class="step s1">
+      <div class="num">1</div>
+      <div class="what">The anchor day for the whole of the 2000s</div>
+      <div class="val">TUESDAY</div>
+    </div>
+
+    <div class="step s2">
+      <div class="num">2</div>
+      <div class="what">Last two digits, plus a quarter of them, rounded down</div>
+      <div class="val">26 + 6 = 32</div>
+    </div>
+
+    <div class="step s3">
+      <div class="num">3</div>
+      <div class="what">Whatever is left after taking out sevens</div>
+      <div class="val">32 mod 7 = 4</div>
+    </div>
+
+    <div class="step s4">
+      <div class="num">4</div>
+      <div class="what">Count that many days on from the anchor</div>
+      <div class="val hot">TUE + 4 = SATURDAY</div>
+    </div>
+
+    <div class="answer">
+      <div class="answerlab">SO, IN 2026</div>
+      <div class="answerbig">4/4, 6/6, 10/10 and 12/12 are all Saturdays.</div>
+      <div class="answersub">And 12 October is two days past 10/10 &mdash; so it is a Monday.</div>
+    </div>
+  </div>
+</div>
+
+<style>
+  :root {
+    --bg-top: #0b0e14;
+    --bg-bottom: #18202f;
+    --ink: #f4f6fb;
+    --muted: #8d9ab3;
+    --dim: #7f8da6;
+    --accent: #d9642a;
+    --panel: #1b2433;
+    --font: "Noto Sans";
+  }
+
+  .stage {
+    width: 100%;
+    height: 100%;
+    position: relative;
+    font-family: var(--font);
+  }
+
+  /* Marked as the backdrop, so the same composition gives an opaque clip for review and a
+     transparent one for an edit. --no-background hides it and nothing else changes. */
+  .backdrop {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+    background: linear-gradient(155deg, var(--bg-top) 0%, var(--bg-bottom) 100%);
+  }
+
+  /* The scenes overlay rather than stack: each fills the frame, so the one whose window is open is
+     simply the one you can see. No `animation` here - that slot belongs to the timeline. */
+  .scene {
+    position: absolute;
+    left: 0;
+    top: 0;
+    width: 100%;
+    height: 100%;
+  }
+
+  /* ---- the furniture both scenes share ---------------------------------------------------- */
+
+  .eyebrow {
+    position: absolute;
+    left: 96px;
+    top: 74px;
+    font-size: 15px;
+    font-weight: 700;
+    letter-spacing: 3px;
+    color: var(--accent);
+  }
+
+  .title {
+    position: absolute;
+    left: 96px;
+    top: 104px;
+    font-size: 62px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .rule {
+    position: absolute;
+    left: 96px;
+    top: 194px;
+    height: 5px;
+    background: var(--accent);
+  }
+
+  .lede {
+    position: absolute;
+    left: 96px;
+    top: 226px;
+    width: 1090px;
+    font-size: 25px;
+    color: var(--muted);
+  }
+
+  .hi { color: var(--ink); font-weight: 700; }
+
+  /* ---- scene one: the rows of dates -------------------------------------------------------- */
+
+  .row {
+    position: absolute;
+    left: 96px;
+    display: flex;
+    align-items: center;
+  }
+
+  .r1 { top: 318px; }
+  .r2 { top: 400px; }
+  .r3 { top: 482px; }
+
+  .rowlab {
+    width: 196px;
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--dim);
+  }
+
+  .chip {
+    width: 112px;
+    height: 56px;
+    margin-right: 14px;
+    border-radius: 9px;
+    background: var(--panel);
+    font-size: 27px;
+    font-weight: 700;
+    color: var(--ink);
+    text-align: center;
+    line-height: 56px;
+  }
+
+  .chip.wide  { width: 212px; font-size: 19px; }
+  .chip.xwide { width: 300px; font-size: 19px; }
+
+  /* No animation on a chip. Its ROW carries the entrance, which is both the semantic grouping -
+     even months, the 9-to-5 pair, the two odd ones out - and three timings instead of eleven. */
+
+  .foot {
+    position: absolute;
+    left: 96px;
+    top: 584px;
+    font-size: 21px;
+    color: var(--muted);
+  }
+
+  /* ---- scene two: the steps ---------------------------------------------------------------- */
+
+  .step {
+    position: absolute;
+    left: 96px;
+    width: 1090px;
+    display: flex;
+    align-items: center;
+  }
+
+  .s1 { top: 240px; }
+  .s2 { top: 304px; }
+  .s3 { top: 368px; }
+  .s4 { top: 432px; }
+
+  .num {
+    width: 34px;
+    height: 34px;
+    margin-right: 18px;
+    border-radius: 17px;
+    background: var(--accent);
+    font-size: 17px;
+    font-weight: 700;
+    color: #0b0e14;
+    text-align: center;
+    line-height: 34px;
+  }
+
+  /* A fixed width AND a margin, because a flex item that overruns its width does not clip - it
+     pushes into its neighbour. The first draft of step two ran its text straight into the value
+     beside it with no gap, which no check reports: every box was laid out exactly as asked. */
+  .what {
+    width: 600px;
+    margin-right: 40px;
+    font-size: 21px;
+    color: var(--muted);
+  }
+
+  .val {
+    width: 350px;
+    font-size: 25px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .val.hot { color: var(--accent); }
+
+  .answer {
+    position: absolute;
+    left: 96px;
+    top: 520px;
+    width: 1090px;
+  }
+
+  .answerlab {
+    font-size: 13px;
+    font-weight: 700;
+    letter-spacing: 2px;
+    color: var(--accent);
+  }
+
+  .answerbig {
+    margin-top: 10px;
+    font-size: 34px;
+    font-weight: 700;
+    color: var(--ink);
+  }
+
+  .answersub {
+    margin-top: 10px;
+    font-size: 21px;
+    color: var(--muted);
+  }
+
+  /* ---- the motion -------------------------------------------------------------------------- */
+  /*
+    The stagger lives in the DURATIONS, not in the delays, because calc() in animation-delay is
+    not supported and is silently treated as zero - so `calc(var(--cut-start) + 2s)` cannot be
+    written. Each staggered entrance holds for its first 85% and moves in the last 15%, which
+    means a longer duration both starts later and lands later. The number after the class is
+    therefore a START TIME divided by 0.85, and the comment beside each one is the time it is
+    really saying.
+
+    The trade this makes, stated because it is visible: the motion length scales with the
+    duration, so the later an item arrives the more gently it eases in - 0.5s for the first row
+    and 1.6s for the last line. At this spread it reads as the sequence settling rather than as
+    an inconsistency. A per-element keyframes block would fix the start and the length
+    independently and cost eleven more blocks to say the same thing.
+
+    The opening four carry no hold at all. They start together with the scene and simply finish
+    in order, which is the shape the shipped scenes.html uses for its first scene.
+  */
+
+  .eyebrow { animation: rise 0.7s ease-out var(--cut-start, 0s) both; }
+  .title   { animation: rise 1.0s ease-out var(--cut-start, 0s) both; }
+  .rule    { animation: sweep 1.4s ease-out var(--cut-start, 0s) both; }
+  .lede    { animation: rise 1.7s ease-out var(--cut-start, 0s) both; }
+
+  .row  { animation: enterUp 3.06s ease-out var(--cut-start, 0s) both; }
+  .r1   { animation-duration: 3.06s; }   /* 2.6s into the scene */
+  .r2   { animation-duration: 5.41s; }   /* 4.6s */
+  .r3   { animation-duration: 7.76s; }   /* 6.6s */
+  .foot { animation: enterUp 10.59s ease-out var(--cut-start, 0s) both; }   /* 9.0s */
+
+  .step { animation: enterLeft 2.35s ease-out var(--cut-start, 0s) both; }
+  .s1   { animation-duration: 2.35s; }   /* 2.0s into the scene */
+  .s2   { animation-duration: 4.24s; }   /* 3.6s */
+  .s3   { animation-duration: 6.12s; }   /* 5.2s */
+  .s4   { animation-duration: 8.00s; }   /* 6.8s */
+
+  .answer { animation: enterUp 10.59s ease-out var(--cut-start, 0s) both; }   /* 9.0s */
+
+  @keyframes rise {
+    from { opacity: 0; transform: translateY(26px); }
+    to   { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes sweep {
+    from { width: 0; opacity: 0; }
+    to   { width: 300px; opacity: 1; }
+  }
+
+  @keyframes enterUp {
+    0%   { opacity: 0; transform: translateY(20px); }
+    85%  { opacity: 0; transform: translateY(20px); }
+    100% { opacity: 1; transform: translateY(0); }
+  }
+
+  @keyframes enterLeft {
+    0%   { opacity: 0; transform: translateX(-30px); }
+    85%  { opacity: 0; transform: translateX(-30px); }
+    100% { opacity: 1; transform: translateX(0); }
+  }
+</style>

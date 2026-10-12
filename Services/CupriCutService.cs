@@ -2,6 +2,7 @@
 using CupriCut.Configuration;
 using CupriFace;
 using CupriFace.Components;
+using CupriFace.Svg;
 using CupriFace.Text;
 using CupriFace.Woff2;
 using Microsoft.Extensions.Logging;
@@ -395,16 +396,7 @@ public sealed class CupriCutService
             // nothing at all - the one substitution the tool actively recommends.
             doc.UseComponents(ComponentRegistry.Default());
 
-            // The WOFF 2 decoder, which this tool needs rather than merely enjoys. A .woff2 the
-            // engine cannot read is refused BY NAME, and FontPolicy.RegisteredOnly below then
-            // turns that into a failed render - correct, and useless, because .woff2 is what every
-            // font pipeline emits and what Google Fonts serves. Without this line the strict
-            // policy's promise ("a face resolves or you hear about it") is kept by failing on the
-            // commonest web font format there is.
-            //
-            // Process-wide rather than per-document, which is how the engine exposes it: once any
-            // document has asked, every later one decodes too.
-            doc.UseWoff2();
+            UseOptionalPackages(doc);
 
             foreach (var dir in ConfiguredFontDirectories.Select(Rooted).Where(Directory.Exists))
                 doc.LoadFonts(dir, recursive: true);
@@ -420,6 +412,43 @@ public sealed class CupriCutService
             doc.Dispose();
             throw;
         }
+    }
+
+    /// <summary>
+    /// The engine's optional packages, installed in every document this tool opens.
+    ///
+    /// <para><b>One function, because two callers must not drift.</b> The renderer opens documents
+    /// here; <see cref="Doctor"/> opens its own, and the engine's checker has to be told what the
+    /// real app installs or it reports the markup those packages draw as undrawable. That is not a
+    /// hypothetical: the SVG check reads a marker <c>UseSvg</c> writes during the rebuild, so a
+    /// lint that did not pass this would tell an author to install a package CupriCut already
+    /// ships and call a method it already calls. This repository has shipped that mistake twice
+    /// over - once as a null stylesheet that turned the CSS checks off entirely, once as CUT006 -
+    /// and a lint that is wrong costs more than a missing one.</para>
+    ///
+    /// <para>Both calls are process-wide rather than per-document in the engine's own design: once
+    /// any document has asked, later ones are covered too. Called per document anyway, because
+    /// relying on whichever document happened to be first is not a property worth having.</para>
+    /// </summary>
+    public static void UseOptionalPackages(CupriDocument doc)
+    {
+        ArgumentNullException.ThrowIfNull(doc);
+
+        // The WOFF 2 decoder, which this tool needs rather than merely enjoys. A .woff2 the engine
+        // cannot read is refused BY NAME, and FontPolicy.RegisteredOnly then turns that into a
+        // failed render - correct, and useless, because .woff2 is what every font pipeline emits
+        // and what Google Fonts serves. Without this line the strict font policy's promise ("a
+        // face resolves or you hear about it") is kept by failing on the commonest web font format
+        // there is.
+        doc.UseWoff2();
+
+        // Inline <svg>. The engine's parser keeps the element either way, so without this it laid
+        // out at its CSS size, painted NOTHING, settled cleanly and lint called it clean - the
+        // same failure shape as the missing component registry, and found the same way: by
+        // counting pixels rather than by looking at a render. An icon set or a logo is SVG far
+        // more often than it is anything else, so a renderer that drops them silently is a
+        // renderer nobody can trust with a brand asset.
+        doc.UseSvg();
     }
 
     // ---- The sweep -------------------------------------------------------------------------

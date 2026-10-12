@@ -271,7 +271,7 @@ notes:
 | `background-image: url(…)`, `background-size`/`-position`/`-repeat` | **Work** as of 0.35.0. A `data:` URI in `url()` no longer ends the declaration at its first `;`. |
 | `z-index` | **Orders siblings** as of 0.39.0. There are still no stacking contexts: the sort is per parent. |
 | `visibility: hidden` | **Works** as of 0.41.0 — the box keeps its space and paints nothing, and a `visibility: visible` child of a hidden parent is painted. It still does **not** animate. |
-| inline `<svg>` | Still not drawn here. The engine can, through the optional `CupriFace.Svg` package and a `UseSvg()` call, which this tool does not yet make. |
+| inline `<svg>` | **Drawn**, as of this tool installing the optional `CupriFace.Svg` package and calling `UseSvg()`. It had never been drawn before that: the parser keeps the element either way, so an `<svg>` laid out at its CSS size, painted **nothing**, settled cleanly and linted clean. Measured: 0 pixels before, 6400 after, on an 80x80 red square. An `<svg>` with no drawable content in the markup is still reported — there is no drawing to claim, and a composition whose shapes a script was going to supply has no script here. |
 
 **Still does not work:**
 

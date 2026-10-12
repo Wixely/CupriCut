@@ -42,6 +42,9 @@
     <!-- The WOFF 2 decoder. See Directory.Packages.props: without it every .woff2 face is refused
          by name, and the strict font policy turns that into a failed render. -->
     <PackageReference Include="CupriFace.Woff2" />
+    <!-- Inline SVG. Same bargain as the decoder above: optional to the engine, not to a tool
+         whose job is drawing what an author wrote. See CupriCutService.UseOptionalPackages. -->
+    <PackageReference Include="CupriFace.Svg" />
     <PackageReference Include="SkiaSharp" />
     <PackageReference Include="Microsoft.Extensions.Hosting.WindowsServices" />
     <PackageReference Include="ModelContextProtocol.AspNetCore" />

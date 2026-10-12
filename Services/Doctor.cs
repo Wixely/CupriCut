@@ -24,5 +24,12 @@ public static class Doctor
     // Spelled out: `Finding` in this namespace is CupriCut's own.
     public static IReadOnlyList<CupriFace.Diagnostics.Finding> Check(
         string html, string css, int width, int height) =>
-        [.. CupriDoctor.Check(html, css, width: width, height: height).Findings];
+        // `configure` is what the real renderer installs, handed over so the checker measures the
+        // document CupriCut actually opens rather than a barer one. Without it the <svg> check
+        // reports every inline SVG as undrawable - it reads a marker UseSvg writes during the
+        // rebuild - and the advice it prints is to add a package this tool already ships and call
+        // a method it already calls. That is the CUT006 mistake again: a lint that is wrong costs
+        // more than a missing one.
+        [.. CupriDoctor.Check(html, css, width: width, height: height,
+                              configure: CupriCutService.UseOptionalPackages).Findings];
 }

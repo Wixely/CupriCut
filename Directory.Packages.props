@@ -14,6 +14,14 @@
       0.28.1; the host installs the decoder with UseWoff2().
     -->
     <PackageVersion Include="CupriFace.Woff2" Version="0.41.0" />
+    <!--
+      Inline <svg>, which the engine keeps as markup and draws only once this package has
+      claimed it. Optional for an application and near-mandatory for this one: an icon or a
+      logo arrives as SVG, and without the package it laid out at its CSS size and painted
+      nothing - present, sized and empty, which every automatic check calls fine. The host
+      installs it with UseSvg().
+    -->
+    <PackageVersion Include="CupriFace.Svg" Version="0.41.0" />
     <!-- Pinned to the engine's own SkiaSharp: SKImage and SKCanvas cross the boundary. -->
     <PackageVersion Include="SkiaSharp" Version="3.116.1" />
   </ItemGroup>
